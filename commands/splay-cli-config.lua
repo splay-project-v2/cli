@@ -22,7 +22,7 @@ along with Splayd. If not, see <http://www.gnu.org/licenses/>.
 ]]
 
 config = {
-	cli_server_url	= "http://splay_backend:8080",
-	username	= "admin",
-	password	= "admin"
+	cli_server_url	= "http://backend:3000",
+	username	= "Admin",
+	password	= "AdminAdmin"
 	}
