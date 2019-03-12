@@ -22,7 +22,7 @@ along with Splayd. If not, see <http://www.gnu.org/licenses/>.
 ]]
 
 config = {
-	cli_server_url	= "http://backend:3000",
+	cli_server_url	= "http://backend:3000/api/v1",
 	username	= "Admin",
 	password	= "AdminAdmin"
 	}

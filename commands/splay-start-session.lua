@@ -104,25 +104,30 @@ function send_start_session(username, password, cli_server_url)
 
 	--prepares the body of the message
 	local body = json.encode({
-		method = "ctrl_api.start_session",
-		params = {username, hashed_password}
+		data = {
+			type = 'session',
+			attributes = {
+				username = username,
+				password = password
+			}
+		}
 	})
 
 	--prints that it is sending the message
 	print_line(VERBOSE, "\nSending command to "..cli_server_url.."...\n")
 
 	--sends the command as a POST
-	local response = http.request(cli_server_url.."/start_session", body)
+	local response, status_code = http.request(cli_server_url.."/sessions", body)
 
 	--if there is a response
-	if check_response(response) then
+	if check_response(status_code) then
 		local json_response = json.decode(response)
 		print_line(NORMAL, "Session started:")
-		print_line(NORMAL, "SESSION_ID = "..json_response.result.session_id)
-		print_line(NORMAL, "EXPIRES_AT = "..json_response.result.expires_at.."\n")
+		print_line(NORMAL, "TOKEN_ID = "..json_response.token)
+		print_line(NORMAL, "EXPIRES_AT = No expiration yet")
 		local hashed_cli_server_url = sha1(cli_server_url)
 		local session_file = io.open("."..hashed_cli_server_url..".session_id","w")
-		session_file:write(json_response.result.session_id)
+		session_file:write(json_response.token)
 		session_file:close()
 	end
 
