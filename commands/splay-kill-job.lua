@@ -31,6 +31,7 @@ local socket = require"socket"
 local http   = require"socket.http"
 --for the JSON encoding/decoding
 local json   =  require"lib.json"
+local ltn12 = require("ltn12")
 --for hashing
 sha1_lib = loadfile("./lib/sha1.lua")
 sha1_lib()
@@ -82,19 +83,22 @@ function send_kill_job(job_id, cli_server_url, session_id)
 	print_line(VERBOSE, "SESSION_ID     = "..session_id)
 	print_cli_server()
 
-	--prepares the body of the message
-	local body = json.encode({
-		method = "ctrl_api.kill_job",
-		params = {job_id, session_id}
-	})
-
 	--prints that it is sending the message
 	print_line(VERBOSE, "\nSending command to "..cli_server_url.."...\n")
 
+	
 	--sends the command as a POST
-	local response = http.request(cli_server_url.."/kill_job", body)
+	local response_body = {} -- Gather the response
+	local response, status_code = http.request{
+		method = 'DELETE',
+		url = cli_server_url.."/jobs/"..job_id,
+		headers = {
+			authorization = session_id
+		},
+		sink = ltn12.sink.table(response_body)
+	}
 
-	if check_response(response) then
+	if check_response(status_code) then
 			print_line(NORMAL, "KILL command successfully sent")
 	end
 
