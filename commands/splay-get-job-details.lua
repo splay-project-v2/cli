@@ -31,6 +31,7 @@ local socket = require"socket"
 local http   = require"socket.http"
 --for the JSON encoding/decoding
 local json   = require"lib.json"
+local ltn12 = require("ltn12")
 --for hashing
 sha1_lib = loadfile("./lib/sha1.lua")
 sha1_lib()
@@ -92,28 +93,36 @@ function send_get_job_details(job_id, cli_server_url, session_id)
 	print_line(VERBOSE, "\nSending command to "..cli_server_url.."...\n")
 
 	--sends the command as a POST
-	local response = http.request(cli_server_url.."/get_job_details", body)
+	local response_body = {} -- Gather the response
+	local response, status_code = http.request{
+		method = 'GET',
+		url = cli_server_url.."/jobs/"..job_id,
+		headers = {
+			authorization = 'Bearer '..session_id
+		},
+		sink = ltn12.sink.table(response_body)
+	}
 
-	if check_response(response) then
-		local json_response = json.decode(response)
-		if json_response.result.name then
-			print_line(QUIET, "Name        = "..json_response.result.name)
+	if check_response(status_code) then
+		local json_response = json.decode(table.concat(response_body))
+		if json_response.job.name then
+			print_line(QUIET, "Name        = "..json_response.job.name)
 		else
 			print_line(QUIET, "Name        = ")
 		end
-		if json_response.result.description then
-			print_line(QUIET, "Description = "..json_response.result.description)
+		if json_response.job.description then
+			print_line(QUIET, "Description = "..json_response.job.description)
 		else
 			print_line(QUIET, "Description = ")
 		end
-		print_line(QUIET, "Ref         = "..json_response.result.ref)
-		print_line(QUIET, "Status      = "..json_response.result.status)
-		if json_response.result.user_id then
-			print_line(QUIET, "User ID     = "..json_response.result.user_id)
+		print_line(QUIET, "Ref         = "..json_response.job.ref)
+		print_line(QUIET, "Status      = "..json_response.job.status)
+		if json_response.job.user_id then
+			print_line(QUIET, "User ID     = "..json_response.job.user_id)
 		end
 		print_line(QUIET, "Host list = ")
-		for _,v in ipairs(json_response.result.host_list) do
-			print_line(QUIET, "\tsplayd_id="..v.splayd_id..", ip="..v.ip..", port="..v.port)
+		for _,v in ipairs(json_response.job.host_list) do
+			print_line(QUIET, "\tsplayd_id="..v.id..", ip="..v.ip..", port="..v.port)
 		end
 		print_line(QUIET, "")
 	end
