@@ -31,6 +31,7 @@ local socket = require"socket"
 local http   = require"socket.http"
 --for the JSON encoding/decoding
 local json   = require"lib.json"
+local ltn12 = require("ltn12")
 --for hashing
 sha1_lib = loadfile("./lib/sha1.lua")
 sha1_lib()
@@ -115,7 +116,7 @@ function parse_arguments()
 end
 
 --function send_new_user: sends a "NEW USER" command to the SPLAY CLI server
-function send_new_user(username, password, cli_server_url,admin_username, admin_password)
+function send_new_user(username, email, password, password_confirmation, cli_server_url,admin_username, admin_password)
 	--prints the arguments
 	print_username("ADMIN USERNAME ", admin_username)
 	print_line(VERBOSE, "NEW USERNAME   = "..username)
@@ -126,20 +127,37 @@ function send_new_user(username, password, cli_server_url,admin_username, admin_
 
 	--prepares the body of the message
 	local body = json.encode({
-		method = "ctrl_api.new_user",
-		params = {username, hashed_password, admin_username, admin_hashedpassword}
+		data = {
+			type = 'user',
+			attributes = {
+				email = email,
+				username = username,
+				password = password,
+				password_confirmation = password_confirmation
+			}
+		}
 	})
 
 	--prints that it is sending the message
 	print_line(VERBOSE, "\nSending command to "..cli_server_url.."...\n")
 
 	--sends the command as a POST
-	local response = http.request(cli_server_url.."/new_user", body)
+	local response_body = {} -- Gather the response
+	local response, status_code = http.request{
+		method = 'POST',
+		url = cli_server_url.."/users",
+		headers = {
+			authorization = session_id,
+			["Content-Length"] = #body
+		},
+		source = ltn12.source.string(body),
+		sink = ltn12.sink.table(response_body)
+	}
 
-	if check_response(response) then
-		local json_response = json.decode(response)
+	if check_response(status_code) then
+		local json_response = json.decode(table.concat(response_body))
 		print_line(NORMAL, "User added")
-		print_line(NORMAL, "User ID = "..json_response.result.user_id.."\n")
+		print_line(NORMAL, "User Token = "..json_response.token.."\n")
 	end
 
 end
@@ -175,7 +193,11 @@ admin_password = check_password(admin_password, "Administrator's password")
 
 username = check_username(username, "New user's name")
 
+email = check_username(email, "New user's email")
+
 password = check_password(password, "New user's password")
 
+password_confirmation = check_password(password_confirmation, "New user's password confirmation")
+
 --calls send_new_user
-send_new_user(username, password, cli_server_url, admin_username, admin_password)
+send_new_user(username, email, password, password_confirmation, cli_server_url,admin_username, admin_password)

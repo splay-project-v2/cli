@@ -31,6 +31,7 @@ local socket = require"socket"
 local http   = require"socket.http"
 --for the JSON encoding/decoding
 local json   = require"lib.json"
+local ltn12 = require("ltn12")
 --for hashing
 sha1_lib = loadfile("./lib/sha1.lua")
 sha1_lib()
@@ -74,20 +75,19 @@ function send_list_jobs(cli_server_url, session_id)
 	print_line(VERBOSE, "SESSION_ID     = "..session_id)
 	print_cli_server()
 
-	--prepares the body of the message
-	local body = json.encode({
-		method = "ctrl_api.list_jobs",
-		params = {session_id}
-	})
-
-	--prints that it is sending the message
-	print_line(VERBOSE, "\nSending command to "..cli_server_url.."...\n")
-
 	--sends the command as a POST
-	local response = http.request(cli_server_url.."/list_jobs", body)
+	local response_body = {} -- Gather the response
+	local response, status_code = http.request{
+		method = 'GET',
+		url = cli_server_url.."/jobs/",
+		headers = {
+			authorization = 'Bearer '..session_id
+		},
+		sink = ltn12.sink.table(response_body)
+	}
 
-	if check_response(response) then
-		local json_response = json.decode(response)
+	if check_response(status_code) then
+		local json_response = json.decode(table.concat(response_body))
 		--counters for totals
 		local stats = {
 			LOCAL = 0,
@@ -97,11 +97,11 @@ function send_list_jobs(cli_server_url, session_id)
 			NO_RESSOURCES = 0,
 			REGISTER_TIMEOUT = 0,
 			KILLED = 0,
-                        QUEUED = 0	-- raluca: No. jobs that are queued, waiting for resources
+			QUEUED = 0	-- raluca: No. jobs that are queued, waiting for resources
 		}
 		--prints the result
 		print_line(NORMAL, "Job List =")
-		for _,v in ipairs(json_response.result.job_list) do
+		for _,v in ipairs(json_response.jobs) do
 			if v.user_id then
 				print_line(QUIET, "\tjob_id="..v.id..", user_id="..v.user_id..", status="..v.status)
 			else

@@ -29,6 +29,7 @@ along with Splayd. If not, see <http://www.gnu.org/licenses/>.
 --for the communication over HTTP
 local socket = require"socket"
 local http   = require"socket.http"
+local ltn12 = require("ltn12")
 --for the JSON encoding/decoding
 local json   = require"lib.json"
 --for hashing
@@ -345,8 +346,15 @@ function send_submit_job(name, description, code_filename, lib_filename, lib_ver
 
 	--prepares the body of the message
 	local body = json.encode({
-		method = "ctrl_api.submit_job",
-    params = {name, description, code, nb_splayds, churn_trace, options, session_id, scheduled_at, strict, trace_alt}
+		data = {
+			type = 'job',
+			attributes = {
+				name = name,
+				description = description,
+				nb_splayds = nb_splayds,
+				code = code
+			}
+		}
 		-- params = {name, description, code, lib_filename, lib_version, nb_splayds, churn_trace, options, session_id, scheduled_at, strict, trace_alt}
 	})
 
@@ -354,14 +362,24 @@ function send_submit_job(name, description, code_filename, lib_filename, lib_ver
 	print_line(VERBOSE, "\nSending command to "..cli_server_url.."...\n")
 
 	--sends the command as a POST
-	local response = http.request(cli_server_url.."/submit_job", body)
+	local response_body = {} -- Gather the response
+	local response, status_code = http.request{
+		method = 'POST',
+		url = cli_server_url.."/jobs",
+		headers = {
+			authorization = session_id,
+			["Content-Length"] = #body
+		},
+		source = ltn12.source.string(body),
+		sink = ltn12.sink.table(response_body)
+	}
 
 	--if there is a response
-	if check_response(response) then
-		local json_response = json.decode(response)
+	if check_response(status_code) then
+		local json_response = json.decode(table.concat(response_body))
 		print_line(NORMAL, "Job Submitted:")
-		print_line(NORMAL, "JOB_ID           = "..json_response.result.job_id)
-		print_line(VERBOSE, "REF              = "..json_response.result.ref)
+		print_line(NORMAL, "JOB_ID           = "..json_response.job.id)
+		print_line(VERBOSE, "REF              = "..json_response.job.ref)
 		print_line(NORMAL, "")
 	end
 

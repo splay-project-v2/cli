@@ -31,6 +31,7 @@ local socket = require"socket"
 local http   = require"socket.http"
 --for the JSON encoding/decoding
 local json   = require"lib.json"
+local ltn12 = require("ltn12")
 --for hashing
 sha1_lib = loadfile("./lib/sha1.lua")
 sha1_lib()
@@ -92,27 +93,29 @@ function send_get_job_code(job_id, cli_server_url, session_id)
 	print_line(VERBOSE, "SESSION_ID     = "..session_id)
 	print_cli_server()
 
-	--prepares the body of the message
-	local body = json.encode({
-		method = "ctrl_api.get_job_code",
-		params = {job_id, session_id}
-	})
-
 	--prints that it is sending the message
 	print_line(VERBOSE, "\nSending command to "..cli_server_url.."...\n")
 
 	--sends the command as a POST
-	local response = http.request(cli_server_url.."/get_job_code", body)
+	local response_body = {} -- Gather the response
+	local response, status_code = http.request{
+		method = 'GET',
+		url = cli_server_url.."/jobs/"..job_id,
+		headers = {
+			authorization = 'Bearer '..session_id
+		},
+		sink = ltn12.sink.table(response_body)
+	}
 
-	if check_response(response) then
-		local json_response = json.decode(response)
+	if check_response(status_code) then
+		local json_response = json.decode(table.concat(response_body))
 		print_line(NORMAL, "Code from JOB "..job_id.." successfully retrieved")
 		if not output_filename then
 			--the default output file is code_jobid.txt (e.g. for Job ID = 3, file = code_3.txt)
 			output_filename = "code_"..job_id..".txt"
 		end
 		local f1 = io.open(output_filename,"w")
-		f1:write(json_response.result.code)
+		f1:write(json_response.job.code)
 		f1:close()
 		print_line(NORMAL, "\nCode saved in file "..output_filename)
 	end

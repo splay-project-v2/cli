@@ -31,6 +31,7 @@ local socket = require"socket"
 local http   = require"socket.http"
 --for the JSON encoding/decoding
 local json   = require"lib.json"
+local ltn12  = require"ltn12"
 --for hashing
 sha1_lib = loadfile("./lib/sha1.lua")
 sha1_lib()
@@ -113,19 +114,20 @@ function send_remove_user(username, cli_server_url,admin_username, admin_passwor
 
 	local admin_hashedpassword = sha1(admin_password)
 
-	--prepares the body of the message
-	local body = json.encode({
-		method = "ctrl_api.remove_user",
-		params = {username, admin_username, admin_hashedpassword}
-	})
-
 	--prints that it is sending the message
 	print_line(VERBOSE, "\nSending command to "..cli_server_url.."...\n")
 
 	--sends the command as a POST
-	local response = http.request(cli_server_url.."/remove_user", body)
-
-	if check_response(response) then
+	local response_body = {} -- Gather the response
+	local response, status_code = http.request{
+		method = 'DELETE',
+		url = cli_server_url.."/users/"..username,
+		headers = {
+			authorization = 'Bearer '..session_id
+		},
+		sink = ltn12.sink.table(response_body)
+	}
+	if check_response(status_code) then
 		print_line(NORMAL, "User removed\n")
 	end
 
@@ -172,11 +174,13 @@ check_min_arg()
 
 check_cli_server()
 
+check_session_id()
+
 admin_username = check_username(admin_username, "Administrator's username")
 
 admin_password = check_password(admin_password, "Administrator's password")
 
-username = check_username(username, "Username to remove")
+username = check_username(username, "UserID to remove")
 
 --calls send_remove_user
 send_remove_user(username, cli_server_url, admin_username, admin_password)

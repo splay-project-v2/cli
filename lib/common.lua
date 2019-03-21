@@ -157,7 +157,7 @@ function check_password(checked_password, password_type)
 		else
 			checked_password = ""
 			--asks for the password
-			print(password_type..":") 
+			print(password_type..":")
 			-- os.execute("stty -ixon")
 			os.execute("stty raw -echo")
 			--reads keystroke by keystroke until ENTER is pressed, in a silent way (is not displayed on screen)
@@ -191,27 +191,16 @@ function check_session_id()
 	end
 end
 
-function check_response(response)
-	if response then
+function check_response(status_code)
+	if status_code then
 		--prints the actual json string
-		print_line(VERBOSE, "\nJSON String received:\n"..response.."\n")
-		local json_response = json.decode(response)
-		if json_response.result then
-			if json_response.result.ok == true then
-				--prints the result
-				print_line(VERBOSE, "Response from "..cli_server_url..":")
-				return true
-			else
-				print("Response from "..cli_server_url..":")
-				if json_response.result.error then
-					print("ERROR: "..json_response.result.error.."\n")
-				else
-					print("ERROR\n")
-				end
-			end
+		print_line(VERBOSE, "\nRequest achieved:\n"..status_code.."\n")
+		if status_code == 200 then
+			print_line(VERBOSE, "Response from "..cli_server_url..":")
+			return true
 		else
 			print("Result not OK in response from "..cli_server_url)
-			print("Error: "..json_response.error)
+			print("Error status: "..status_code)
 			print("Please report this error to the SPLAY CLI server administrator\n")
 		end
 	--if not
@@ -222,4 +211,3 @@ function check_response(response)
 	end
 	return false
 end
-

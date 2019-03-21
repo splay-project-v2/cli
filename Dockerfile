@@ -16,3 +16,4 @@ ADD sample.lua ./
 ADD ./app ./app
 
 RUN lua install_check.lua
+CMD tail -f /dev/null
