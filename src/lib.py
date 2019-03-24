@@ -19,14 +19,19 @@ def store_session(token):
     f.close()
 
 def fetch_session():
-    filename = hashlib.sha1(BASE_URL.encode('utf-8')).hexdigest() + '_session_id.key'
-    f = open(filename, 'r')
-    token = f.read()
-    f.close()
-    return token
+    try:
+      filename = hashlib.sha1(BASE_URL.encode('utf-8')).hexdigest() + '_session_id.key'
+      f = open(filename, 'r')
+      token = f.read()
+      f.close()
+      return token
+    except IOError:
+      print("Not token could be retrieved.")
+      print("Please start a session using 'start-session' command.")
+      sys.exit()
 
 def fetch_lua_algo(name):
-    filename = './app/' + name
+    filename = '../algorithms/' + name
     f = open(filename, 'r')
     code = f.read()
     f.close()
