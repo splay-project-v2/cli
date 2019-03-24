@@ -121,7 +121,9 @@ def submit_job(name, description, nb_splayds, filename):
     if nb_splayds:
         data['data']['attributes']['nb_splayds'] = nb_splayds
     response = requests.post(endpoint, headers=headers, data=json.dumps(data))
-    click.echo(response.json()['job'])
+    click.echo("Job submitted")
+    click.echo("Job ID        : " + response.json()['job']['id'])
+    click.echo("Job reference : " + response.json()['job']['ref'])
 
 if __name__ == "__main__":
     main()
