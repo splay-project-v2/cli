@@ -65,6 +65,26 @@ def list_users():
     headers = authentified_headers()
     response = requests.get(endpoint, headers=headers)
     click.echo(response.json()['users'])
+
+@main.command()
+@click.argument('username', nargs=1)
+@click.argument('email', nargs=1)
+@click.argument('password', nargs=1)
+@click.argument('password_conf', nargs=1)
+def new_user(username, email, password, password_conf):
+    """Creates user with <username>, <email>, <password> and <password_conf>"""
+    endpoint = BASE_URL + 'users'
+    headers = authentified_headers()
+    data = request_body('user', {
+        'username': username, 'password': password, 'email': email, 'password_confirmation': password_conf
+    })
+    response = requests.post(endpoint, headers=headers, data=data)
+    click.echo(response.json())
+
+
+
+
+
 ####################
 ## Main procedure ##
 ####################
