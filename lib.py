@@ -1,4 +1,8 @@
 import hashlib
+import click
+import requests
+import json
+import sys
 from config import *
 
 def request_body(type, attributes):
@@ -34,3 +38,10 @@ def authentified_headers():
         'AUTHORIZATION': 'Bearer ' + token,
         'CONTENT_TYPE': 'application/vnd.splay+json; version=1'
     }
+
+def check_response(response):
+    if response.status_code != 200:
+        click.echo("Error code : " + str(response.status_code))
+        click.echo("Message : " + response.json()['errors'])
+        click.echo("Contact administrator or review command usage with --help option")
+        sys.exit()

@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-
-import click
-import requests
-import json
 from lib import *
 
 __author__ = "Samuel Monroe & Rémy Voet"
@@ -22,6 +18,7 @@ def start_session(username, password):
     endpoint = BASE_URL + 'sessions'
     data = request_body('session', {'username': username, 'password': password})
     response = requests.post(endpoint, data=json.dumps(data))
+    check_response(response)
     store_session(response.json()['token'])
 
 @main.command()
@@ -30,6 +27,7 @@ def list_users():
     endpoint = BASE_URL + 'users'
     headers = authentified_headers()
     response = requests.get(endpoint, headers=headers)
+    check_response(response)
     click.echo(response.json()['users'])
 
 @main.command()
@@ -45,6 +43,7 @@ def new_user(username, email, password, password_conf):
         'username': username, 'password': password, 'email': email, 'password_confirmation': password_conf
     })
     response = requests.post(endpoint, headers=headers, data=json.dumps(data))
+    check_response(response)
     click.echo(response.json())
 
 @main.command()
@@ -54,6 +53,7 @@ def remove_user(user_id):
     endpoint = BASE_URL + 'users/' + user_id
     headers = authentified_headers()
     response = requests.delete(endpoint, headers=headers)
+    check_response(response)
     click.echo(response.json())
 
 @main.command()
@@ -62,12 +62,12 @@ def list_splayds():
     endpoint = BASE_URL + 'splayds'
     headers = authentified_headers()
     response = requests.get(endpoint, headers=headers)
+    check_response(response)
     for item in response.json()['splayds']:
         click.echo("* [Splayd id : " + str(item['id']) + "]")
         click.echo("\t # IP     " + item['ip'])
         click.echo("\t # Status " + item['status'])
         click.echo("\t # Key    " + item['key'])
-    #click.echo(response.json())
 
 @main.command()
 def list_jobs():
@@ -75,6 +75,7 @@ def list_jobs():
     endpoint = BASE_URL + 'jobs'
     headers = authentified_headers()
     response = requests.get(endpoint, headers=headers)
+    check_response(response)
     click.echo(response.json())
 
 @main.command()
@@ -84,6 +85,7 @@ def kill_job(job_id):
     endpoint = BASE_URL + 'jobs/' + job_id
     headers = authentified_headers()
     response = requests.delete(endpoint, headers=headers)
+    check_response(response)
     click.echo(response.json())
 
 @main.command()
@@ -93,6 +95,7 @@ def get_job_code(job_id):
     endpoint = BASE_URL + 'jobs/' + job_id
     headers = authentified_headers()
     response = requests.get(endpoint, headers=headers)
+    check_response(response)
     click.echo(response.json()['job']['code'])
 
 @main.command()
@@ -102,6 +105,7 @@ def get_job_details(job_id):
     endpoint = BASE_URL + 'jobs/' + job_id
     headers = authentified_headers()
     response = requests.get(endpoint, headers=headers)
+    check_response(response)
     click.echo(response.json()['job'])
 
 @main.command()
@@ -121,6 +125,7 @@ def submit_job(name, description, nb_splayds, filename):
     if nb_splayds:
         data['data']['attributes']['nb_splayds'] = nb_splayds
     response = requests.post(endpoint, headers=headers, data=json.dumps(data))
+    check_response(response)
     click.echo("Job submitted")
     click.echo("Job ID        : " + response.json()['job']['id'])
     click.echo("Job reference : " + response.json()['job']['ref'])
