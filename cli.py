@@ -90,7 +90,13 @@ def remove_user(user_id):
     response = requests.delete(endpoint, headers=headers)
     click.echo(response.json())
 
-
+@main.command()
+def list_splayds():
+    """List Splay Daemons, called Splayds"""
+    endpoint = BASE_URL + 'splayds'
+    headers = authentified_headers()
+    response = requests.get(endpoint, headers=headers)
+    click.echo(response.json())
 ####################
 ## Main procedure ##
 ####################
