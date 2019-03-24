@@ -81,8 +81,14 @@ def new_user(username, email, password, password_conf):
     response = requests.post(endpoint, headers=headers, data=data)
     click.echo(response.json())
 
-
-
+@main.command()
+@click.argument('user_id', nargs=1)
+def remove_user(user_id):
+    """Removes user referred by <user_id>, admin only."""
+    endpoint = BASE_URL + 'users/' + user_id
+    headers = authentified_headers()
+    response = requests.delete(endpoint, headers=headers)
+    click.echo(response.json())
 
 
 ####################
