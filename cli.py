@@ -62,7 +62,12 @@ def list_splayds():
     endpoint = BASE_URL + 'splayds'
     headers = authentified_headers()
     response = requests.get(endpoint, headers=headers)
-    click.echo(response.json())
+    for item in response.json()['splayds']:
+        click.echo("* [Splayd id : " + str(item['id']) + "]")
+        click.echo("\t # IP     " + item['ip'])
+        click.echo("\t # Status " + item['status'])
+        click.echo("\t # Key    " + item['key'])
+    #click.echo(response.json())
 
 @main.command()
 def list_jobs():
