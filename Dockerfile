@@ -1,19 +1,17 @@
-FROM ubuntu:18.04
+FROM python:3.7.2-slim
 LABEL Description="Splay - RPC Client - App able to launch lua script to get/push information to the controller"
 
-RUN mkdir /usr/splay
-WORKDIR /usr/splay
+RUN mkdir -p /usr/splay/src
+RUN mkdir -p /usr/splay/algorithms
 
-RUN apt-get update && apt-get -y --no-install-recommends install lua5.3 liblua5.3-0 liblua5.3-dev lua-socket lua-socket-dev
-# Due to a bug of lua 5.3 package where the symbol link is not create
-RUN update-alternatives --install /usr/bin/lua lua /usr/bin/lua5.3 10
-RUN update-alternatives --install /usr/bin/luac luac /usr/bin/luac5.3 10
+WORKDIR /usr/splay/
 
-ADD commands/* ./
-ADD lib ./lib
-ADD install_check.lua ./
-ADD sample.lua ./
-ADD ./app ./app
+ADD ./src ./src
+ADD ./algorithms ./algorithms
+ADD ./requirements.txt ./
 
-RUN lua install_check.lua
+RUN pip install -r requirements.txt
+
+WORKDIR /usr/splay/src
+
 CMD tail -f /dev/null
