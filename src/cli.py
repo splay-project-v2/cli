@@ -127,8 +127,18 @@ def submit_job(name, description, nb_splayds, filename):
     response = requests.post(endpoint, headers=headers, data=json.dumps(data))
     check_response(response)
     click.echo("Job submitted")
-    click.echo("Job ID        : " + response.json()['job']['id'])
+    click.echo("Job ID        : " + str(response.json()['job']['id']))
     click.echo("Job reference : " + response.json()['job']['ref'])
+
+@main.command()
+@click.argument('job_id', nargs=1)
+def get_job_logs(job_id):
+    """Get Splay Job logs referred by <job_id>"""
+    endpoint = BASE_URL + 'logs/' + job_id
+    headers = authentified_headers()
+    response = requests.get(endpoint, headers=headers)
+    check_response(response)
+    click.echo(response.json()['logs'])
 
 if __name__ == "__main__":
     main()
