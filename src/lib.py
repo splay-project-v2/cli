@@ -28,7 +28,7 @@ def fetch_session():
     except IOError:
       print("Not token could be retrieved.")
       print("Please start a session using 'start-session' command.")
-      sys.exit()
+      sys.exit(2)
 
 def fetch_lua_algo(name):
     filename = '../algorithms/' + name
@@ -49,4 +49,4 @@ def check_response(response):
         click.echo("Error code : " + str(response.status_code))
         click.echo("Message : " + response.json()['errors'])
         click.echo("Contact administrator or review command usage with --help option")
-        sys.exit()
+        sys.exit(1)
