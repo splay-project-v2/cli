@@ -30,8 +30,7 @@ def fetch_session():
       print("Please start a session using 'start-session' command.")
       sys.exit(2)
 
-def fetch_lua_algo(name):
-    filename = '../algorithms/' + name
+def fetch_lua_algo(filename):
     f = open(filename, 'r')
     code = f.read()
     f.close()

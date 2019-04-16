@@ -38,13 +38,13 @@ def list_users():
 def new_user(username, email, password, password_conf):
     """Creates user with <username>, <email>, <password> and <password_conf>"""
     endpoint = BASE_URL + 'users'
-    headers = authentified_headers()
+    # headers = authentified_headers()
     data = request_body('user', {
         'username': username, 'password': password, 'email': email, 'password_confirmation': password_conf
     })
-    response = requests.post(endpoint, headers=headers, data=json.dumps(data))
+    response = requests.post(endpoint, data=json.dumps(data))
     check_response(response)
-    click.echo(response.json())
+    store_session(response.json()['token'])
 
 @main.command()
 @click.argument('user_id', nargs=1)
@@ -112,11 +112,13 @@ def get_job_details(job_id):
 @click.option('--name', '-n', help='Name of the job.')
 @click.option('--description', '-d',  help='Description of the job.')
 @click.option('--nb_splayds', '-s',  default=1, help='Number of splayds.')
+@click.option('--topo_filename', '-t', help='Xml topology filename')
 @click.argument('filename', nargs=1)
-def submit_job(name, description, nb_splayds, filename):
+def submit_job(name, description, nb_splayds, topo_filename, filename):
     """Submit new job, specifying a name of lua code file and optional args."""
     endpoint = BASE_URL + 'jobs'
     headers = authentified_headers()
+    print("Submit new job, specif")
     data = request_body('user', { 'code': fetch_lua_algo(filename) })
     if name:
         data['data']['attributes']['name'] = name
@@ -124,6 +126,8 @@ def submit_job(name, description, nb_splayds, filename):
         data['data']['attributes']['description'] = description
     if nb_splayds:
         data['data']['attributes']['nb_splayds'] = nb_splayds
+    if topo_filename:
+        data['data']['attributes']['topology'] = fetch_lua_algo(topo_filename)
     response = requests.post(endpoint, headers=headers, data=json.dumps(data))
     check_response(response)
     click.echo("Job submitted")

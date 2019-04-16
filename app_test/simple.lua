@@ -5,7 +5,8 @@ Small script to test splay, just log the different neighbours during 1 minutes
 --]]
 
 require("splay.base")
-print("Discovering Job - launch during 1 minute - v1")
+
+print("I am the job "..job.position)
 
 neighbours = job.nodes
 print("I am link to :")
