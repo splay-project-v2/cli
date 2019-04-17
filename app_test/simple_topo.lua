@@ -16,8 +16,7 @@ WITH this topology and 2 slayds
 </topology>
 ]]--
 
-print("TOPO TEST")
-
+print("SIMPLE_TOPO.LUA START")
 require("splay.base")
 
 local events=require("splay.events")
@@ -41,10 +40,9 @@ u = net.udp_helper(job.me.port, print_server)
 
 events.run(function()
 
-    print("Wait 5 seconds")
-    events.sleep(5)
+    print("Wait 2 seconds")
+    events.sleep(2)
     print("Start send hello")
-
 
     local start = misc.time()
     for i, n in pairs(job.nodes) do
@@ -54,11 +52,13 @@ events.run(function()
         end
     end
 
-    events.sleep(5)
+    events.sleep(4)
 
     final_time = t_end - start
     print("Time to n1 -> hello -> n2 -> world -> n1 : "..final_time)
+    print("FINAL RTT : "..final_time.." sec")
 
     events.kill(u.server)
 end)
 
+print("SIMPLE_TOPO.LUA EXIT")

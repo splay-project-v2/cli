@@ -29,6 +29,7 @@ rs.init(settings)
 socket = rs.wrap(socket)
 package.loaded['socket.core'] = socket ]]
 
+print("SIMPLE_NET.LUA START")
 print("Begin Simple network : I am "..job.me.ip..":"..job.me.port)
 
 require("splay.base")
@@ -41,15 +42,15 @@ function receive(s)
     local ip, port = s:getpeername()
     while events.yield() do
         local data, err = s:receive("*l")
-        print("I received "..data.." from "..ip..":"..port)
+        print("I received : "..data)
     end
 end
 
 function send(s)
     print("Send Stand by")
     while events.yield() do
-        events.sleep(3)
-        s:send("Hello i am "..misc.dump(job.me).."\n")
+        events.sleep(1)
+        s:send("I AM "..job.position.."\n")
     end
 end
 
@@ -60,16 +61,16 @@ end
 
 function final(s)
     local ip, port = s:getpeername()
-    print("Closing: "..ip..":"..port.." - index ")
+    print("Closing: "..ip..":"..port)
 end
 
 events.run(function()
     -- Accept connection from other nodes
     net.server(job.me.port, {initialize = init, send = send, receive = receive, finalize = final})
     
-    -- Launch connection to each orther node (use the same function than server) (retry every 5 second)
+    -- Launch connection to each orther node
     events.thread(function ()
-        events.sleep(5)
+        events.sleep(1)
         for i, n in pairs(job.nodes) do
             if n.port ~= job.me.port or n.ip ~= job.me.ip then
                 print("Try to begin connection to "..n.ip..":"..n.port.." - index "..i)
@@ -79,8 +80,8 @@ events.run(function()
     end)
     
     -- Stop after 20 seconds
-    events.sleep(20)
-    print("Simple Network exit")
+    events.sleep(4)
+    print("SIMPLE_NET.LUA EXIT")
 
     events.exit()
 end)
