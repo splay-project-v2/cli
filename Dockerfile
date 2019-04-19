@@ -1,4 +1,4 @@
-FROM python:3.7.2-slim
+FROM python:3.7-slim
 LABEL Description="Splay - RPC Client - App able to launch lua script to get/push information to the controller"
 
 WORKDIR /app

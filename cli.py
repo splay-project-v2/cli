@@ -119,7 +119,7 @@ def submit_job(name, description, nb_splayds, topo_filename, filename):
     endpoint = BASE_URL + 'jobs'
     headers = authentified_headers()
     print("Submit new job, specif")
-    data = request_body('user', { 'code': fetch_lua_algo(filename) })
+    data = request_body('user', { 'code': fetch_file(filename) })
     if name:
         data['data']['attributes']['name'] = name
     if description:
@@ -127,7 +127,7 @@ def submit_job(name, description, nb_splayds, topo_filename, filename):
     if nb_splayds:
         data['data']['attributes']['nb_splayds'] = nb_splayds
     if topo_filename:
-        data['data']['attributes']['topology'] = fetch_lua_algo(topo_filename)
+        data['data']['attributes']['topology'] = fetch_file(topo_filename)
     response = requests.post(endpoint, headers=headers, data=json.dumps(data))
     check_response(response)
     click.echo("Job submitted")
