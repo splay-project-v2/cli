@@ -54,6 +54,18 @@ events.run(function()
 
     events.sleep(4)
 
+    if t_end == 0 then
+        local start = misc.time()
+        for i, n in pairs(job.nodes) do
+            if i ~= job.position then
+                print(">>> "..n.ip..":"..n.port.." : hello")
+                u.s:sendto("hello", n.ip, n.port)
+            end
+        end
+
+        events.sleep(4)
+    end
+
     final_time = t_end - start
     print("Time to n1 -> hello -> n2 -> world -> n1 : "..final_time)
     print("FINAL RTT : "..final_time.." sec")
