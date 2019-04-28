@@ -86,7 +86,7 @@ def kill_job(job_id):
     headers = authentified_headers()
     response = requests.delete(endpoint, headers=headers)
     check_response(response)
-    click.echo(response.json())
+    click.echo("Success kill")
 
 @main.command()
 @click.argument('job_id', nargs=1)
