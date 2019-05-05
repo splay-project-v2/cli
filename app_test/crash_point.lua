@@ -10,14 +10,14 @@ function receive(s)
     while events.yield() do
         local data, err = s:receive("*l")
         print("I received : "..data)
-        -- CRASH POINT 2 : STOP : AFTER 6
+        -- CRASH POINT 2 : STOP : AFTER 4
     end
 end
 
 function send(s)
     while events.yield() do
         -- CRASH POINT 1 : RECOVERY 1 : AFTER 3
-        events.sleep(0.5)
+        events.sleep(0.4)
         print("I send data") 
         s:send("I AM "..job.position.."\n")
     end
