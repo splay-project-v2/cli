@@ -1,22 +1,37 @@
 --[[
 
-Raft leader election implementation
-help with http://disi.unitn.it/~montreso/ds/handouts/14-raft.pdf
+Raft leader election implementation with anim log (see tools)
+
 --]]
 
--- FOR local test - without splay
---[[ socket = require("socket")
-rs = require("splay.restricted_socket")
-rs.init(settings)
-socket = rs.wrap(socket)
-package.loaded['socket.core'] = socket
+function aUpdateState(state, term)
+    print("ANIM STATE "..job.position.." : "..state.." : "..term)
+end
 
-job = {}
-job.me = {ip = '127.0.0.1', port= tonumber(arg[1])}
---job.nodes = {{ip= '127.0.0.1', port= 15001 }, {ip= '127.0.0.1', port= 15002 },{ip= '127.0.0.1', port= 15003 },{ip= '127.0.0.1', port= 15004 },{ip= '127.0.0.1', port= 15005 }}
-job.nodes = {{ip= '127.0.0.1', port= 15001 }, {ip= '127.0.0.1', port= 15002 }, {ip= '127.0.0.1', port= 15003 }} ]]
+function aConnected(to)
+    print("ANIM CONNETED "..job.position.." : "..to)
+end
 
-print("RAFT.LUA START on "..job.me.ip..":"..job.me.port.." ("..job.position..")")
+function aReceiveData(socket)
+    local data, err = socket:receive("*l")
+    if (data ~= nil) then
+        s_data = misc.split(data)
+        uuid = s_data[1]
+        s_data[1] = ""
+        data = string.sub(table.concat(s_data ," "), 2)
+        print("ANIM RDATA "..job.position.." <- "..socket.job_index.." : "..uuid.." : "..data)
+    end
+    
+    return data, err
+end
+
+function aSendData(socket, data)
+    local uuid = misc.random_string(20)
+    print("ANIM SDATA "..job.position.." -> "..socket.job_index.." : "..uuid.." : "..data)
+    socket:send(uuid.." "..data.."\n")
+end
+
+print("ANIM START ON "..job.position)
 
 require("splay.base")
 local math = require("math")
@@ -44,6 +59,8 @@ state = {
     votes = {}
 }
 
+aUpdateState("follower", 0)
+
 -- sockets table of each connected node (nil == cot connected to)
 sockets = {}
 
@@ -58,9 +75,9 @@ function set_contains(set, key)
 end
 
 function stepdown(term)
-    print("STEPDOWN : "..term.." > "..state.term)
     state.term = tonumber(term)
     state.state = "follower"
+    aUpdateState(state.state, state.term)
     state.voteFor = nil
     set_election_timeout()
 end
@@ -106,9 +123,8 @@ end
 function trigger_rpc_timeout(s)
     local ip, port = s:getpeername()
     if (state.state == "candidate") then
-        print("Send new rpc timeout for "..ip..":"..port.." - index "..s.job_index)
         set_rpc_timeout(s.job_index)
-        s:send(vote_msg.req.." "..state.term.."\n")
+        aSendData(s, vote_msg.req.." "..state.term)
     end
 end
 
@@ -117,6 +133,7 @@ function trigger_election_timeout()
         set_election_timeout()
         state.term = state.term + 1
         state.state = "candidate"
+        aUpdateState(state.state, state.term)
         state.voteFor = job_index
         state.votes = {}
         state.votes[job_index] = true
@@ -131,7 +148,7 @@ function trigger_heart_timeout()
     state.term = state.term + 1
     for k, s in pairs(sockets) do
         if s ~= nil then
-            s:send(heartbeat_msg.." "..state.term.."\n")
+            aSendData(s,heartbeat_msg.." "..state.term)
         end
     end
     set_heart_timeout()
@@ -148,12 +165,11 @@ end
 function receive(s)
     local ip, port = s:getpeername()
     while events.yield() do
-        local data, err = s:receive("*l")
+        local data, err = aReceiveData(s)
         if data == nil then
             print("ERROR : "..err)
             return false
         else
-            print("I receive "..data.." From "..ip..":"..port)
             local table_d = misc.split(data, " ")
             if table_d[1] == vote_msg.rep then
                 -- VOTE REP
@@ -164,12 +180,11 @@ function receive(s)
                 if term == state.term and state.state == "candidate" then
                     if vote == job_index then
                         state.votes[s.job_index] = true
-                        print("I have received one vote from "..s.job_index.." | cnt = "..misc.size(state.votes))
                     end
                     rpc_time[s.job_index] = nil
                     if misc.size(state.votes) > misc.size(job.nodes) /2 then
-                        print("I become the LEADER")
                         state.state = "leader"
+                        aUpdateState(state.state, state.term)
                         state.leader = job_index
                         trigger_heart_timeout()
                     end
@@ -184,7 +199,7 @@ function receive(s)
                     state.voteFor = s.job_index
                     set_election_timeout()
                 end
-                s:send(vote_msg.rep.." "..state.term.." "..state.voteFor.."\n")
+                aSendData(s,vote_msg.rep.." "..state.term.." "..state.voteFor)
             elseif table_d[1] == heartbeat_msg then
                 -- HEARBEAT
                 set_election_timeout()
@@ -208,6 +223,7 @@ function init(s, connect)
         s.job_index = tonumber(d)
 
         print("connection to: "..ip..":"..port.." - job_index = "..s.job_index)
+        aConnected(s.job_index)
     else
         local d = s:receive()
         s:send(job_index.."\n")
@@ -215,6 +231,7 @@ function init(s, connect)
         s.job_index = tonumber(d)
 
         print("connection from: "..ip..":"..port.." - job_index = "..s.job_index)
+        aConnected(s.job_index)
     end
     if  sockets[s.job_index] ~= nil then
         print("I am already connect to "..s.job_index )
@@ -252,7 +269,7 @@ events.run(function()
     set_election_timeout()
     
     -- Stop after 10 seconds
-    events.sleep(10)
-    print("RAFT.LUA EXIT on"..job.me.ip..":"..job.me.port)
+    events.sleep(20)
+    print("ANIM EXIT ON "..job.position)
     events.exit()
 end)
