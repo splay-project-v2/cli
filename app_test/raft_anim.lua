@@ -12,6 +12,10 @@ function aConnected(to)
     print("ANIM CONNETED "..job.position.." : "..to)
 end
 
+function aDisconnected(to)
+    print("ANIM DISCONNETED "..job.position.." : "..to)
+end
+
 function aReceiveData(socket)
     local data, err = socket:receive("*l")
     if (data ~= nil) then
@@ -204,7 +208,6 @@ function receive(s)
                 -- HEARBEAT
                 set_election_timeout()
                 state.term = tonumber(table_d[2])
-                state.voteFor = nil
             else
                 print("Warning : unkown message -> "..table_d[1])
             end
@@ -219,32 +222,24 @@ function init(s, connect)
     if connect then
         s:send(job_index.."\n")
         local d = s:receive()
-
         s.job_index = tonumber(d)
-
-        print("connection to: "..ip..":"..port.." - job_index = "..s.job_index)
         aConnected(s.job_index)
     else
         local d = s:receive()
         s:send(job_index.."\n")
-
         s.job_index = tonumber(d)
-
-        print("connection from: "..ip..":"..port.." - job_index = "..s.job_index)
         aConnected(s.job_index)
     end
     if  sockets[s.job_index] ~= nil then
-        print("I am already connect to "..s.job_index )
-        error("Already connect in a other socket")
+        error("Already connect to "..s.job_index.." in a other socket")
     else
-        print("Save socket "..s.job_index.." in the table")
         sockets[s.job_index] = s
     end
 end
 
 function final(s)
     local ip, port = s:getpeername()
-    print("Closing: "..ip..":"..port.." - index "..s.job_index)
+    aDisconnected(s.job_index)
     sockets[s.job_index] = nil
 end
 

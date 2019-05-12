@@ -189,7 +189,6 @@ function receive(s)
                 -- HEARBEAT
                 set_election_timeout()
                 state.term = tonumber(table_d[2])
-                state.voteFor = nil
             else
                 print("Warning : unkown message -> "..table_d[1])
             end
