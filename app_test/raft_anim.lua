@@ -35,7 +35,7 @@ function aSendData(socket, data)
     socket:send(uuid.." "..data.."\n")
 end
 
-print("ANIM START ON "..job.position)
+print("ANIM START "..job.position)
 
 require("splay.base")
 local math = require("math")
@@ -265,6 +265,6 @@ events.run(function()
     
     -- Stop after 10 seconds
     events.sleep(20)
-    print("ANIM EXIT ON "..job.position)
+    print("ANIM EXIT "..job.position)
     events.exit()
 end)
