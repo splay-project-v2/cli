@@ -2,6 +2,25 @@
 
 Raft leader election implementation with anim log (see tools)
 
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<topology>
+  <vertices>
+    <vertex int_idx="1" role="virtnode" int_vn="1"/>
+    <vertex int_idx="2" role="virtnode" int_vn="2"/>
+    <vertex int_idx="3" role="virtnode" int_vn="3"/>
+  </vertices>
+  <edges>
+    <edge int_idx="1" int_src="1" int_dst="2" specs="normal"/>
+    <edge int_idx="2" int_src="1" int_dst="3" specs="normal"/>
+    <edge int_idx="3" int_src="2" int_dst="1" specs="normal"/>
+    <edge int_idx="4" int_src="2" int_dst="3" specs="normal"/>
+    <edge int_idx="5" int_src="3" int_dst="1" specs="normal"/>
+    <edge int_idx="6" int_src="3" int_dst="2" specs="normal"/>
+  </edges>
+  <specs>
+    <normal dbl_kbps="1520" int_delayms="200"/>
+  </specs>
+</topology>
 --]]
 
 function aUpdateState(state, term)
@@ -256,7 +275,7 @@ events.run(function()
                     net.client(n, {initialize = init, send = send, receive = receive, finalize = final})
                 end
             end
-            events.sleep(5)
+            events.sleep(1)
         end
     end)
 
