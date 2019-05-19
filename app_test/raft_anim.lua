@@ -2,12 +2,15 @@
 
 Raft leader election implementation with anim log (see tools)
 
+With 5 nodes 
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <topology>
   <vertices>
     <vertex int_idx="1" role="virtnode" int_vn="1"/>
     <vertex int_idx="2" role="virtnode" int_vn="2"/>
     <vertex int_idx="3" role="virtnode" int_vn="3"/>
+    <vertex int_idx="4" role="virtnode" int_vn="4"/>
+    <vertex int_idx="5" role="virtnode" int_vn="5"/>
   </vertices>
   <edges>
     <edge int_idx="1" int_src="1" int_dst="2" specs="normal"/>
@@ -16,6 +19,20 @@ Raft leader election implementation with anim log (see tools)
     <edge int_idx="4" int_src="2" int_dst="3" specs="normal"/>
     <edge int_idx="5" int_src="3" int_dst="1" specs="normal"/>
     <edge int_idx="6" int_src="3" int_dst="2" specs="normal"/>
+    <edge int_idx="7" int_src="1" int_dst="4" specs="normal"/>
+    <edge int_idx="8" int_src="1" int_dst="5" specs="normal"/>
+    <edge int_idx="9" int_src="2" int_dst="4" specs="normal"/>
+    <edge int_idx="10" int_src="2" int_dst="5" specs="normal"/>
+    <edge int_idx="11" int_src="3" int_dst="4" specs="normal"/>
+    <edge int_idx="12" int_src="3" int_dst="5" specs="normal"/>
+    <edge int_idx="13" int_src="4" int_dst="1" specs="normal"/>
+    <edge int_idx="14" int_src="4" int_dst="2" specs="normal"/>
+    <edge int_idx="15" int_src="4" int_dst="3" specs="normal"/>
+    <edge int_idx="16" int_src="4" int_dst="5" specs="normal"/>
+    <edge int_idx="17" int_src="5" int_dst="1" specs="normal"/>
+    <edge int_idx="18" int_src="5" int_dst="2" specs="normal"/>
+    <edge int_idx="19" int_src="5" int_dst="4" specs="normal"/>
+    <edge int_idx="20" int_src="5" int_dst="3" specs="normal"/>
   </edges>
   <specs>
     <normal dbl_kbps="1520" int_delayms="200"/>
@@ -169,6 +186,8 @@ end
 
 function trigger_heart_timeout()
     state.term = state.term + 1
+    -- For crash the leader sometime (replace Crash -> CRASH)
+    -- CRASH POINT 1 2 3 4 5 : RECOVERY 1 : RANDOM 0.05
     for k, s in pairs(sockets) do
         if s ~= nil then
             aSendData(s,heartbeat_msg.." "..state.term)
@@ -283,7 +302,7 @@ events.run(function()
     set_election_timeout()
     
     -- Stop after 10 seconds
-    events.sleep(20)
+    events.sleep(35)
     print("ANIM EXIT "..job.position)
     events.exit()
 end)

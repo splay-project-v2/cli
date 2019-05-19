@@ -1,5 +1,5 @@
 --[[
-WITH this topology and 2 slayds 
+WITH this topology and 2 slayds, by pass the topology <-
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <topology>
 	<vertices>
@@ -15,14 +15,23 @@ WITH this topology and 2 slayds
 	</specs>
 </topology>
 ]]--
+package.loaded["socket"] = nil
+package.loaded["socket.core"] = nil
+package.loaded["splay.socket"] = nil
+
 
 print("SIMPLE_TOPO.LUA START")
+socket = require("socket.core")
+
 require("splay.base")
+socket = require("socket.core")
 
 local events=require("splay.events")
 local rpc=require("splay.rpc")
 local net = require("splay.net")
 local misc = require("splay.misc")
+socket = require("socket.core")
+
 
 local rtt = 0
 local t_end = 0
