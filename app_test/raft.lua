@@ -71,7 +71,7 @@ function send_vote_request(node)
         "request_vote", persistent_state.current_term, job.position, last_log_index, last_log_term
     }, rpc_timeout)
     if term == nil then -- Timeout occur retry
-        print("timeout occured")
+        print("RPC Timeout occured")
         term, vote_granted = send_vote_request(node) 
     end 
     return term, vote_granted
@@ -98,7 +98,11 @@ function heartbeat()
     -- CRASH POINT 1 2 3 : RECOVERY 0.5 : RANDOM 0.2
     for i, n in pairs(job.nodes) do
         if i ~= job.position then
-            events.thread(function () send_append_entry(i, n, nil) end)
+            events.thread(function () 
+                send_append_entry(i, n, nil) 
+                print("Hearbeat ok "..term.." : "..json.encode(vote_granted).." from "..json.encode(n))
+
+            end)
         end
     end
 end
@@ -144,8 +148,6 @@ function request_vote(term, candidate_id, last_log_index, last_log_term)
         vote_granted = true
         set_election_timeout()
     end
-    print("return the result")
-
     return persistent_state.current_term, vote_granted
 end
 
@@ -173,7 +175,7 @@ function trigger_election_timeout()
         if i ~= job.position then
             events.thread(function ()
                 local term, vote_granted = send_vote_request(n)
-                print("vote request result "..term.." : "..json.encode(vote_granted).." from "..json.encode(n))
+                print("Vote Request result "..term.." : "..json.encode(vote_granted).." from "..json.encode(n))
                 if vote_granted == true then
                     nb_vote = nb_vote + 1
                     if nb_vote > majority_threshold and volatile_state.state ~= "leader" then -- Become the leader
