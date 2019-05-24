@@ -36,15 +36,15 @@ persistent_state = {
 
 -- Minimal timeout for each purpose in second
 election_timeout = 1.5
-rpc_timeout = 0.2
-heartbeat_timeout = 0.6
+rpc_timeout = 0.4
+heartbeat_timeout = 0.8
 
 -- Timeout variable (to check if timeout has been canceled)
 rpc_time = {}
 election_time = nil
 heart_time = nil
-
-local pers_file = io.open("pers.json", "r")
+filename_persistent = "pers"..job.ref..".json"
+local pers_file = io.open(filename_persistent, "r")
 if pers_file ~= nil then
     persistent_state = json.decode(pers_file:read("*a"))
     pers_file:close()
@@ -54,7 +54,7 @@ volatile_state_leader = state_leader_init()
 
 -- Utils functions
 function save_persistent_state()
-    pers_file = io.open("pers.json", "w+")
+    pers_file = io.open(filename_persistent, "w+")
     pers_file:write(json.encode(persistent_state))
     pers_file:close()
 end
@@ -71,6 +71,7 @@ function send_vote_request(node)
         "request_vote", persistent_state.current_term, job.position, last_log_index, last_log_term
     }, rpc_timeout)
     if term == nil then -- Timeout occur retry
+        print("timeout occured")
         term, vote_granted = send_vote_request(node) 
     end 
     return term, vote_granted
@@ -85,7 +86,7 @@ function send_append_entry(node_index, node, entry)
         local prev_log_term = persistent_state.log[next_index - 1].term
     end
     local term, success = urpc.call(node, {
-        "append_entry", job.position, prev_log_index, prev_log_term, entry, volatile_state.commit_index
+        "append_entry", persistent_state.current_term, job.position, prev_log_index, prev_log_term, entry, volatile_state.commit_index
     }, rpc_timeout)
     if term == nil then  -- Timeout
         term, success = send_append_entry(node_index, node, entry)
@@ -94,7 +95,7 @@ function send_append_entry(node_index, node, entry)
 end
 
 function heartbeat()
-    -- CRASH POINT 1 2 3 : RECOVERY 0.5 : AFTER 3
+    -- CRASH POINT 1 2 3 : RECOVERY 0.5 : RANDOM 0.2
     for i, n in pairs(job.nodes) do
         if i ~= job.position then
             events.thread(function () send_append_entry(i, n, nil) end)
@@ -103,8 +104,10 @@ function heartbeat()
 end
 
 function become_leader()
+    volatile_state.state = "leader"
     -- cancelled timout election
     election_time = misc.time()
+    print("I AM THE LEADER NOW")
     heartbeat()
     events.periodic(heartbeat_timeout, function() heartbeat() end)
     -- No client simulation for now
@@ -113,6 +116,7 @@ end
 -- RCP functions
 function append_entry(term, leader_id, prev_log_index, prev_log_term, entry, leader_commit)
     print("APPEND ENTRY FROM "..leader_id.." Term : "..term.." Entry : "..json.encode(entry))
+    volatile_state.state = "follower"
     set_election_timeout()
     -- HEARTBEAT
     if entry == nil then
@@ -140,6 +144,8 @@ function request_vote(term, candidate_id, last_log_index, last_log_term)
         vote_granted = true
         set_election_timeout()
     end
+    print("return the result")
+
     return persistent_state.current_term, vote_granted
 end
 
@@ -157,6 +163,7 @@ end
 -- Trigger functions
 function trigger_election_timeout()
     print("Election trigger")
+    volatile_state.state = "candidate"
     persistent_state.current_term = persistent_state.current_term + 1
     persistent_state.voted_for = job.position
     save_persistent_state()
@@ -169,7 +176,7 @@ function trigger_election_timeout()
                 print("vote request result "..term.." : "..json.encode(vote_granted).." from "..json.encode(n))
                 if vote_granted == true then
                     nb_vote = nb_vote + 1
-                    if nb_vote > majority_threshold then -- Become the leader
+                    if nb_vote > majority_threshold and volatile_state.state ~= "leader" then -- Become the leader
                         become_leader()
                     end
                 end
