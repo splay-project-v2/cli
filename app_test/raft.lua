@@ -10,7 +10,6 @@ majority_threshold = misc.size(job.nodes) / 2
 
 volatile_state = {
     commit_index = 0,
-    last_applied = 0,
     state = "follower" -- follower, candidate or leader
 }
 
@@ -90,18 +89,21 @@ function send_append_entry(node_index, node, entry)
     }, rpc_timeout)
     if term == nil then  -- Timeout
         term, success = send_append_entry(node_index, node, entry)
+    elseif success == false then
+        print("Send append entry fail decrement next_index")
+        volatile_state_leader.next_index[node_index] = volatile_state_leader.next_index[node_index] - 1
+        term, success = send_append_entry(node_index, node, entry)
     end
     return term, success
 end
 
 function heartbeat()
-    -- CRASH POINT 1 2 3 : RECOVERY 0.5 : RANDOM 0.2
+    -- CRASH POINT 1 2 3 : RECOVERY 0.5 : RANDOM 0.05
     for i, n in pairs(job.nodes) do
         if i ~= job.position then
             events.thread(function () 
                 send_append_entry(i, n, nil) 
-                print("Hearbeat ok "..term.." : "..json.encode(vote_granted).." from "..json.encode(n))
-
+                print("Hearbeat ok "..persistent_state.current_term.." : "..json.encode(vote_granted).." from "..json.encode(n))
             end)
         end
     end
@@ -113,23 +115,66 @@ function become_leader()
     election_time = misc.time()
     print("I AM THE LEADER NOW")
     heartbeat()
+    -- Easy way to make heartbeat - doesn't take in account client request
     events.periodic(heartbeat_timeout, function() heartbeat() end)
-    -- No client simulation for now
+    -- Client simulation - every 5 sec
+    events.periodic(3, function() client_request(misc.random_string(20)) end)
+end
+
+function client_request(data)
+    if volatile_state.state == "leader" then
+        local nb_commit = 1
+        persistent_state.log[#persistent_state.log + 1] = {term = persistent_state.current_term, data = data}
+        save_persistent_state()
+        for i, n in pairs(job.nodes) do
+            if i ~= job.position then
+                events.thread(function () 
+                    local term, success = send_append_entry(i, n, data) 
+                    if success then 
+                        nb_commit = nb_commit + 1 
+                        volatile_state_leader.next_index[i] = volatile_state_leader.next_index[i] + 1 
+                    end
+                    if nb_commit > majority_threshold then 
+                        print("Request "..data.." commited in majority of client")
+                    end
+                end)
+            end
+        end
+    end
 end
 
 -- RCP functions
 function append_entry(term, leader_id, prev_log_index, prev_log_term, entry, leader_commit)
-    print("APPEND ENTRY FROM "..leader_id.." Term : "..term.." Entry : "..json.encode(entry))
+    print("APPEND ENTRY FROM "..leader_id.." Term : "..term.." Entry : "..json.encode(entry).." Prev_i : "..prev_log_index)
     volatile_state.state = "follower"
     set_election_timeout()
-    -- HEARTBEAT
-    if entry == nil then
-        return persistent_state.current_term, true
-    end
+
     local success = false
-    if success then
-        save_persistent_state() -- Save persistant state
+    -- IF previous log exist and term ok and previous log term match with leader log term (or no log)
+    if term >= persistent_state.current_term and #persistent_state.log >= prev_log_index 
+        and (prev_log_index == 0 or persistent_state.log[prev_log_index].term == prev_log_term) then 
+        -- IF it is not a heartbeat
+        if entry ~= nil then 
+            persistent_state.log[prev_log_index + 1] = {term = term, data = entry}
+        end
+        success = true
+    elseif prev_log_index ~= 0 and persistent_state.log[prev_log_index] ~= nil 
+        and persistent_state.log[prev_log_index].term ~= prev_log_term then
+        -- IF conflict with leader -> delete log and all after
+        for i = prev_log_index, #persistent_state.log do
+            persistent_state.log[i] = nil
+        end
+        if entry ~= nil then 
+            persistent_state.log[prev_log_index + 1] = {term = term, data = entry}
+        end
+        success = true
     end
+
+    if term > persistent_state.current_term then
+        persistent_state.current_term = term
+    end
+    save_persistent_state()
+
     return persistent_state.current_term, success
 end
 
@@ -143,6 +188,7 @@ function request_vote(term, candidate_id, last_log_index, last_log_term)
     if ((persistent_state.voted_for == nil or persistent_state.voted_for == candidate_id) 
         and last_log_index >= #persistent_state.log) or term > persistent_state.current_term then
         persistent_state.voted_for = candidate_id
+        persistent_state.current_term = term
         save_persistent_state() -- Save persistant state
 
         vote_granted = true
@@ -196,7 +242,9 @@ events.run(function()
     -- Election manage 
     set_election_timeout()
 
-    events.sleep(10)
+    events.sleep(50)
+
+    print("FINAL log :"..json.encode(persistent_state))
+    
     events.exit()
 end)
-
