@@ -1,257 +1,228 @@
 --[[
-
-Raft leader election implementation
-help with http://disi.unitn.it/~montreso/ds/handouts/14-raft.pdf
+Raft implementation - Only the leader election sub-problem
+Helped with https://web.stanford.edu/~ouster/cgi-bin/papers/raft-atc14
 --]]
-
--- FOR local test - without splay
---[[ socket = require("socket")
-rs = require("splay.restricted_socket")
-rs.init(settings)
-socket = rs.wrap(socket)
-package.loaded['socket.core'] = socket
-
-job = {}
-job.me = {ip = '127.0.0.1', port= tonumber(arg[1])}
---job.nodes = {{ip= '127.0.0.1', port= 15001 }, {ip= '127.0.0.1', port= 15002 },{ip= '127.0.0.1', port= 15003 },{ip= '127.0.0.1', port= 15004 },{ip= '127.0.0.1', port= 15005 }}
-job.nodes = {{ip= '127.0.0.1', port= 15001 }, {ip= '127.0.0.1', port= 15002 }, {ip= '127.0.0.1', port= 15003 }} ]]
-
-print("RAFT.LUA START on "..job.me.ip..":"..job.me.port.." ("..job.position..")")
-
 require("splay.base")
-local math = require("math")
-local net = require("splay.net")
-local misc = require("splay.misc")
+local json = require("json")
+local urpc = require("splay.urpc")
 
--- Index in the list of nodes -> Send to other of nodes.
-job_index = job.position
+majority_threshold = #job.nodes / 2
+
+volatile_state = {
+    state = "follower", -- follower, candidate or leader
+    commit_index -- used for log replication
+}
+
+-- Save in storage before rpc response (in file - it is a trick for persistency)
+persistent_state = { 
+    current_term = 0,
+    voted_for = nil,
+    log = {} -- Array of {term = associated_term, data = <change_state>}
+}
 
 -- Minimal timeout for each purpose in second
 election_timeout = 1.5
-rpc_timeout = 0.2
-heartbeat_timeout = 0.6
-
--- Constant msg send and receive between nodes
-vote_msg = {req = "VOTEREQ", rep = "VOTEREP"}
-heartbeat_msg = "HEARTBEAT"
-
--- State of this node
-state = {
-    term = 0,
-    voteFor = nil, -- index in the node list
-    state = "follower", -- follower, candidat, or leader
-    leader = nil, --  {ip = ip, port = port} of the leader
-    votes = {}
-}
-
--- sockets table of each connected node (nil == cot connected to)
-sockets = {}
+rpc_timeout = 0.4
+heartbeat_timeout = 0.8
 
 -- Timeout variable (to check if timeout has been canceled)
-rpc_time = {}
 election_time = nil
-heart_time = nil
 
--- helper functions
-function set_contains(set, key)
-    return set[key] ~= nil
+-- File to save the persistent state
+filename_persistent = "pers"..job.ref..".json"
+local pers_file = io.open(filename_persistent, "r")
+if pers_file ~= nil then
+    persistent_state = json.decode(pers_file:read("*a"))
+    pers_file:close()
 end
 
+-- Utils functions
+function save_persistent_state()
+    pers_file = io.open(filename_persistent, "w+")
+    pers_file:write(json.encode(persistent_state))
+    pers_file:close()
+end
+
+-- If someone have a bigger term -> stepdown (request or response)
 function stepdown(term)
-    print("STEPDOWN : "..term.." > "..state.term)
-    state.term = tonumber(term)
-    state.state = "follower"
-    state.voteFor = nil
+    print("Stepdown : "..term.." > "..persistent_state.current_term)
+    persistent_state.current_term = tonumber(term)
+    persistent_state.voted_for = nil
+    save_persistent_state()
+    volatile_state.state = "follower"
     set_election_timeout()
 end
 
--- Timeout functions
+function send_vote_request(node, node_index)
+    print("Send request to "..json.encode(node_index).." - "..json.encode(node))
+
+    -- Here not really used because only election
+    last_log_index = #persistent_state.log
+    last_log_term = 0
+    if last_log_index > 0 then
+        last_log_term = persistent_state.log[#persistent_state.log].term
+    end
+
+    local term, vote_granted = urpc.call(node, {
+        "request_vote", persistent_state.current_term, job.position, last_log_index, last_log_term
+    }, rpc_timeout)
+    if term == nil then -- Timeout occur retry
+        print("RPC VOTE REQUEST Timeout retried - resend")
+        term, vote_granted = send_vote_request(node, node_index) 
+    end 
+    return term, vote_granted
+end
+
+function send_append_entry(node_index, node, entry)
+    print("Send append entry ("..json.encode(entry)..") to "..json.encode(node_index).." - "..json.encode(node))
+
+    -- Used only for log replication
+    -- local next_index = volatile_state_leader.next_index[node_index]
+    local next_index = 1 -- No log replication then hardcoded
+    local prev_log_index = next_index - 1
+    local prev_log_term = 0
+    if #persistent_state.log > 1 then
+        local prev_log_term = persistent_state.log[next_index - 1].term
+    end
+
+    local term, success = urpc.call(node, {
+        "append_entry", persistent_state.current_term, job.position, prev_log_index, prev_log_term, entry, volatile_state.commit_index
+    }, rpc_timeout)
+    if term == nil then  -- Timeout
+        term, success = send_append_entry(node_index, node, entry)
+    end
+    return term, success
+end
+
+function heartbeat()
+    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : AFTER 2
+    if volatile_state.state == "leader" then 
+        for i, n in pairs(job.nodes) do
+            if i ~= job.position then
+                events.thread(function ()
+                    term, success = send_append_entry(i, n, nil) 
+                    if term > persistent_state.current_term then
+                        stepdown(term)
+                    end
+                end)
+            end
+        end
+    end
+end
+
+function become_leader()
+    print("I Become the leader now")
+    volatile_state.state = "leader"
+    -- cancelled timout election
+    election_time = misc.time()
+    -- trigger the heartbeart directly and periodically
+    heartbeat()
+    events.periodic(heartbeat_timeout, function() heartbeat() end)
+
+    -- No client simulation for now (because no replication log)
+end
+
+-- RCP functions
+
+-- Append Entry RPC function used by leader for the heartbeat (avoiding new election) - entry == nil means heartbeat
+-- Also normally used for log replication (not present here)
+function append_entry(term, leader_id, prev_log_index, prev_log_term, entry, leader_commit)
+    print("RPC Append entry FROM "..leader_id.." Term : "..term.." Entry : "..json.encode(entry))
+    if term > persistent_state.current_term then
+        stepdown(term)
+    end
+    -- reset the election timeout (avoiding new election)
+    set_election_timeout()
+    volatile_state.state = "follower" -- if candidate, return in follower state
+    
+    -- HEARTBEAT
+    if entry == nil then
+        return persistent_state.current_term, true
+    else
+        -- NORMAL Entry (Log replication feature - not present here) 
+        return persistent_state.current_term, false
+    end
+end
+
+-- Vote Request RPC function, called by candidate to get votes
+function request_vote(term, candidate_id, last_log_index, last_log_term)
+    print("RPC Request Vote FROM "..candidate_id.." Term : "..term)
+    
+    -- It the candidate is late - don't grant the vote
+    if term < persistent_state.current_term then
+        return persistent_state.current_term, false
+    elseif term > persistent_state.current_term then
+        stepdown(term)
+    end
+
+    local vote_granted = false
+
+    -- Condition to grant the vote :
+    --  (If the node doesn't already grant the vote to and other) and 
+    --  (log of the candidate is updated - not usefull if only election)
+    if ((persistent_state.voted_for == nil or persistent_state.voted_for == candidate_id) 
+        and last_log_index >= #persistent_state.log) then
+        -- Save the candidate vote
+        persistent_state.voted_for = candidate_id
+        save_persistent_state()
+        vote_granted = true
+        set_election_timeout() -- reset the election timeout
+    end
+    return persistent_state.current_term, vote_granted
+end
+
+-- Timeout function
 function set_election_timeout()
     election_time = misc.time()
     local time = election_time
     events.thread(function ()
+        -- Randomize the sleeping time = [election_timeout, 2 * election_timeout] 
         events.sleep(((math.random() + 1.0) * election_timeout))
-        -- if the timeout is not cancelled
-        if (time == election_time) then
-            trigger_election_timeout()
-        end
+        -- if the timeout is not cancelled -> trigger election
+        if (time == election_time) then trigger_election_timeout() end
     end)
 end
 
-function set_rpc_timeout(node_index)
-    rpc_time[node_index] = misc.time()
-    local time = rpc_time[node_index]
-    events.thread(function ()
-        events.sleep((math.random() * 0.2) + rpc_timeout)
-        -- if the timeout is not cancelled
-        if (time == rpc_time[node_index] and sockets[node_index] ~= nil) then
-            trigger_rpc_timeout(sockets[node_index])
-        end
-    end)
-end
-
-function set_heart_timeout()
-    heart_time = misc.time()
-    local time = heart_time
-    events.thread(function ()
-        events.sleep(heartbeat_timeout)
-        -- if the timeout is not cancelled
-        if (time == heart_time and state.leader == job_index) then
-            trigger_heart_timeout()
-        end
-    end)
-end
-
--- Trigger functions
-function trigger_rpc_timeout(s)
-    local ip, port = s:getpeername()
-    if (state.state == "candidate") then
-        print("Send new rpc timeout for "..ip..":"..port.." - index "..s.job_index)
-        set_rpc_timeout(s.job_index)
-        s:send(vote_msg.req.." "..state.term.."\n")
-    end
-end
-
+-- Trigger function
 function trigger_election_timeout()
-    if (state.state == "follower" or state.state == "candidate") then 
-        set_election_timeout()
-        state.term = state.term + 1
-        state.state = "candidate"
-        state.voteFor = job_index
-        state.votes = {}
-        state.votes[job_index] = true
-        for k, s in pairs(sockets) do
-            rpc_time[s.job_index] = nil
-            trigger_rpc_timeout(s)
-        end
-    end
-end
-
-function trigger_heart_timeout()
-    state.term = state.term + 1
-    for k, s in pairs(sockets) do
-        if s ~= nil then
-            s:send(heartbeat_msg.." "..state.term.."\n")
-        end
-    end
-    set_heart_timeout()
-end
-
--- Socket fonctions
-function send(s)
-    set_rpc_timeout(s)
-    while events.yield() do
-        events.sleep(3)
-    end
-end
-
-function receive(s)
-    local ip, port = s:getpeername()
-    while events.yield() do
-        local data, err = s:receive("*l")
-        if data == nil then
-            print("ERROR : "..err)
-            return false
-        else
-            print("I receive "..data.." From "..ip..":"..port)
-            local table_d = misc.split(data, " ")
-            if table_d[1] == vote_msg.rep then
-                -- VOTE REP
-                local term, vote = tonumber(table_d[2]), tonumber(table_d[3])
-                if term > state.term then
-                    stepdown(term)
-                end
-                if term == state.term and state.state == "candidate" then
-                    if vote == job_index then
-                        state.votes[s.job_index] = true
-                        print("I have received one vote from "..s.job_index.." | cnt = "..misc.size(state.votes))
-                    end
-                    rpc_time[s.job_index] = nil
-                    if misc.size(state.votes) > misc.size(job.nodes) /2 then
-                        print("I become the LEADER")
-                        state.state = "leader"
-                        state.leader = job_index
-                        trigger_heart_timeout()
+    print("Election Trigger - upgrade term and become candidate ")
+    volatile_state.state = "candidate"
+    persistent_state.current_term = persistent_state.current_term + 1
+    persistent_state.voted_for = job.position
+    save_persistent_state()
+    -- If conflict in this election, and new election can be trigger
+    set_election_timeout()
+    local nb_vote = 1
+    for i, n in pairs(job.nodes) do
+        if i ~= job.position then
+            events.thread(function ()
+                local term, vote_granted = send_vote_request(n, i)
+                print("Vote Request result "..term.." : "..json.encode(vote_granted).." from "..json.encode(i).." - "..json.encode(n))
+                if vote_granted == true then
+                    nb_vote = nb_vote + 1
+                    -- If the majority grant the vote -> become the leader
+                    if nb_vote > majority_threshold and volatile_state.state == "candidate" then 
+                        become_leader()
                     end
                 end
-            elseif table_d[1] == vote_msg.req then
-                -- VOTE REQ
-                local term = tonumber(table_d[2])
-                if term > state.term then
+                if term > persistent_state.current_term then
                     stepdown(term)
                 end
-                if term == state.term and (state.voteFor == nil or state.voteFor == s.job_index) then
-                    state.voteFor = s.job_index
-                    set_election_timeout()
-                end
-                s:send(vote_msg.rep.." "..state.term.." "..state.voteFor.."\n")
-            elseif table_d[1] == heartbeat_msg then
-                -- HEARBEAT
-                set_election_timeout()
-                state.term = tonumber(table_d[2])
-            else
-                print("Warning : unkown message -> "..table_d[1])
-            end
+            end)
         end
     end
 end
 
-function init(s, connect)
-    -- if connect == true => client 
-    -- If this function returns false, The connection will be closed immediatly
-    local ip, port = s:getpeername()
-    if connect then
-        s:send(job_index.."\n")
-        local d = s:receive()
+-- UDP RPC server
+urpc.server(job.me)
 
-        s.job_index = tonumber(d)
-
-        print("connection to: "..ip..":"..port.." - job_index = "..s.job_index)
-    else
-        local d = s:receive()
-        s:send(job_index.."\n")
-
-        s.job_index = tonumber(d)
-
-        print("connection from: "..ip..":"..port.." - job_index = "..s.job_index)
-    end
-    if  sockets[s.job_index] ~= nil then
-        print("I am already connect to "..s.job_index )
-        error("Already connect in a other socket")
-    else
-        print("Save socket "..s.job_index.." in the table")
-        sockets[s.job_index] = s
-    end
-end
-
-function final(s)
-    local ip, port = s:getpeername()
-    print("Closing: "..ip..":"..port.." - index "..s.job_index)
-    sockets[s.job_index] = nil
-end
-
+-- Main
 events.run(function()
-    -- Accept connection from other nodes
-    net.server(job.me.port, {initialize = init, send = send, receive = receive, finalize = final})
     
-    -- Launch connection to each orther node (use the same function than server) (retry every 5 second)
-    events.thread(function ()
-        while events.yield() do
-            for i, n in pairs(job.nodes) do
-                if sockets[i] == nil and i ~= job_index then
-                    print("Try to begin connection to "..n.ip..":"..n.port.." - index "..i)
-                    net.client(n, {initialize = init, send = send, receive = receive, finalize = final})
-                end
-            end
-            events.sleep(5)
-        end
-    end)
-
     -- Election manage 
     set_election_timeout()
-    
-    -- Stop after 10 seconds
-    events.sleep(10)
-    print("RAFT.LUA EXIT on"..job.me.ip..":"..job.me.port)
+
+    -- After 10 second the node will exit no matter what
+    events.sleep(100)
     events.exit()
 end)
