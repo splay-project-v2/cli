@@ -111,7 +111,7 @@ function heartbeat()
 end
 
 function become_leader()
-    print("I Become the leader now")
+    print("I Become the LEADER now")
     volatile_state.state = "leader"
     -- cancelled timout election
     election_time = misc.time()
