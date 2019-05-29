@@ -2,22 +2,23 @@
 Raft implementation - Only the leader election sub-problem
 Helped with https://web.stanford.edu/~ouster/cgi-bin/papers/raft-atc14
 --]]
+---- Init
+
 require("splay.base")
 local json = require("json")
 local urpc = require("splay.urpc")
 
 majority_threshold = #job.nodes / 2
+thread_heartbeat = nil
 
 volatile_state = {
     state = "follower", -- follower, candidate or leader
-    commit_index -- used for log replication
 }
 
--- Save in storage before rpc response (in file - it is a trick for persistency)
+-- Save in stable storage (here just a file)
 persistent_state = { 
     current_term = 0,
     voted_for = nil,
-    log = {} -- Array of {term = associated_term, data = <change_state>}
 }
 
 -- Timeout for each purpose in second
@@ -36,7 +37,8 @@ if pers_file ~= nil then
     pers_file:close()
 end
 
--- Utils functions
+---- Utils functions
+
 function save_persistent_state()
     pers_file = io.open(filename_persistent, "w+")
     pers_file:write(json.encode(persistent_state))
@@ -51,20 +53,18 @@ function stepdown(term)
     save_persistent_state()
     volatile_state.state = "follower"
     set_election_timeout()
+
+    -- If I was leader but obviously not anymore - remove pediodic heartbeat
+    if thread_heartbeat ~= nil then 
+        events.kill(thread_heartbeat)
+    end
 end
 
 function send_vote_request(node, node_index)
     print("Send request to "..json.encode(node_index).." - "..json.encode(node))
 
-    -- Here not really used because only election
-    last_log_index = #persistent_state.log
-    last_log_term = 0
-    if last_log_index > 0 then
-        last_log_term = persistent_state.log[#persistent_state.log].term
-    end
-
     local term, vote_granted = urpc.call(node, {
-        "request_vote", persistent_state.current_term, job.position, last_log_index, last_log_term
+        "request_vote", persistent_state.current_term, job.position
     }, rpc_timeout)
     if term == nil then -- Timeout occur retry
         print("RPC VOTE REQUEST Timeout retried - resend")
@@ -74,19 +74,10 @@ function send_vote_request(node, node_index)
 end
 
 function send_append_entry(node_index, node, entry)
-    print("Send append entry ("..json.encode(entry)..") to "..json.encode(node_index).." - "..json.encode(node))
-
-    -- Used only for log replication
-    -- local next_index = volatile_state_leader.next_index[node_index]
-    local next_index = 1 -- No log replication then hardcoded
-    local prev_log_index = next_index - 1
-    local prev_log_term = 0
-    if #persistent_state.log > 1 then
-        local prev_log_term = persistent_state.log[next_index - 1].term
-    end
+    print("Send append entry ("..json.encode(entry)..") to "..node_index)
 
     local term, success = urpc.call(node, {
-        "append_entry", persistent_state.current_term, job.position, prev_log_index, prev_log_term, entry, volatile_state.commit_index
+        "append_entry", persistent_state.current_term, job.position, entry
     }, rpc_timeout)
     if term == nil then  -- Timeout
         term, success = send_append_entry(node_index, node, entry)
@@ -95,17 +86,14 @@ function send_append_entry(node_index, node, entry)
 end
 
 function heartbeat()
-    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : AFTER 2
-    if volatile_state.state == "leader" then 
-        for i, n in pairs(job.nodes) do
-            if i ~= job.position then
-                events.thread(function ()
-                    term, success = send_append_entry(i, n, nil) 
-                    if term > persistent_state.current_term then
-                        stepdown(term)
-                    end
-                end)
-            end
+    for i, n in pairs(job.nodes) do
+        if i ~= job.position then
+            events.thread(function ()
+                term, success = send_append_entry(i, n, nil) 
+                if term > persistent_state.current_term then
+                    stepdown(term)
+                end
+            end)
         end
     end
 end
@@ -117,22 +105,21 @@ function become_leader()
     election_time = misc.time()
     -- trigger the heartbeart directly and periodically
     heartbeat()
-    events.periodic(heartbeat_timeout, function() heartbeat() end)
-
+    thread_heartbeat = events.periodic(heartbeat_timeout, function() heartbeat() end)
     -- No client simulation for now (because no replication log)
 end
 
--- RCP functions
+---- RCP functions
 
--- Append Entry RPC function used by leader for the heartbeat (avoiding new election) - entry == nil means heartbeat
+-- Append Entry RPC function used by leader for the heartbeat 
+-- (avoiding new election) - entry == nil means heartbeat
 -- Also normally used for log replication (not present here)
-function append_entry(term, leader_id, prev_log_index, prev_log_term, entry, leader_commit)
+function append_entry(term, leader_id, entry)
     print("RPC Append entry FROM "..leader_id.." Term : "..term.." Entry : "..json.encode(entry))
     if term > persistent_state.current_term then
         stepdown(term)
     end
-    -- reset the election timeout (avoiding new election)
-    set_election_timeout()
+    set_election_timeout() -- reset the election timeout
     volatile_state.state = "follower" -- if candidate, return in follower state
     
     -- HEARTBEAT
@@ -145,9 +132,9 @@ function append_entry(term, leader_id, prev_log_index, prev_log_term, entry, lea
 end
 
 -- Vote Request RPC function, called by candidate to get votes
-function request_vote(term, candidate_id, last_log_index, last_log_term)
+function request_vote(term, candidate_id)
     print("RPC Request Vote FROM "..candidate_id.." Term : "..term)
-    
+
     -- It the candidate is late - don't grant the vote
     if term < persistent_state.current_term then
         return persistent_state.current_term, false
@@ -158,10 +145,8 @@ function request_vote(term, candidate_id, last_log_index, last_log_term)
     local vote_granted = false
 
     -- Condition to grant the vote :
-    --  (If the node doesn't already grant the vote to and other) and 
-    --  (log of the candidate is updated - not usefull if only election)
-    if ((persistent_state.voted_for == nil or persistent_state.voted_for == candidate_id) 
-        and last_log_index >= #persistent_state.log) then
+    --  (If the node doesn't already grant the vote to and other)
+    if (persistent_state.voted_for == nil or persistent_state.voted_for == candidate_id) then
         -- Save the candidate vote
         persistent_state.voted_for = candidate_id
         save_persistent_state()
@@ -171,7 +156,8 @@ function request_vote(term, candidate_id, last_log_index, last_log_term)
     return persistent_state.current_term, vote_granted
 end
 
--- Timeout function
+---- Timeout/Trigger functions
+
 function set_election_timeout()
     election_time = misc.time()
     local time = election_time
@@ -183,7 +169,6 @@ function set_election_timeout()
     end)
 end
 
--- Trigger function
 function trigger_election_timeout()
     print("Election Trigger - upgrade term and become candidate ")
     volatile_state.state = "candidate"
@@ -197,7 +182,7 @@ function trigger_election_timeout()
         if i ~= job.position then
             events.thread(function ()
                 local term, vote_granted = send_vote_request(n, i)
-                print("Vote Request result "..term.." : "..json.encode(vote_granted).." from "..json.encode(i).." - "..json.encode(n))
+                print("Vote Request result "..term.." : "..json.encode(vote_granted).." from "..i)
                 if vote_granted == true then
                     nb_vote = nb_vote + 1
                     -- If the majority grant the vote -> become the leader
@@ -216,11 +201,10 @@ end
 -- UDP RPC server
 urpc.server(job.me)
 
--- Main
+---- Main
 events.run(function()
     
-    -- Election manage 
-    set_election_timeout()
+    set_election_timeout() -- set the election timeout
 
     -- After 100 second the node will exit no matter what
     events.sleep(100)
