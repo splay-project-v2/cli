@@ -20,10 +20,10 @@ persistent_state = {
     log = {} -- Array of {term = associated_term, data = <change_state>}
 }
 
--- Minimal timeout for each purpose in second
-election_timeout = 1.5
-rpc_timeout = 0.4
-heartbeat_timeout = 0.8
+-- Timeout for each purpose in second
+election_timeout = 1.5 -- random: [election_timeout, 2 * election_timeout]
+rpc_timeout = 0.5
+heartbeat_timeout = 0.6
 
 -- Timeout variable (to check if timeout has been canceled)
 election_time = nil
@@ -222,7 +222,7 @@ events.run(function()
     -- Election manage 
     set_election_timeout()
 
-    -- After 10 second the node will exit no matter what
+    -- After 100 second the node will exit no matter what
     events.sleep(100)
     events.exit()
 end)

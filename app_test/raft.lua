@@ -1,6 +1,7 @@
 --[[
-Complete Raft implementation
+Complete Raft implementation - Election + log replication (not finished)
 Helped with https://web.stanford.edu/~ouster/cgi-bin/papers/raft-atc14
+Work in progress 
 --]]
 require("splay.base")
 local json = require("json")
