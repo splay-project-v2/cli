@@ -2,11 +2,20 @@
 Raft implementation - Only the leader election sub-problem
 Helped with https://web.stanford.edu/~ouster/cgi-bin/papers/raft-atc14
 --]]
+
 ---- Init
 
 require("splay.base")
 local json = require("json")
 local urpc = require("splay.urpc")
+
+-- Overwrite the print to show the job position (node index)
+do
+	local p = print
+	print = function(...)
+		p(job.position.." : "..(...)) 
+	end
+end
 
 majority_threshold = #job.nodes / 2
 thread_heartbeat = nil
@@ -61,25 +70,26 @@ function stepdown(term)
 end
 
 function send_vote_request(node, node_index)
-    print("Send request to "..json.encode(node_index).." - "..json.encode(node))
+    print("Send vote request to node "..json.encode(node_index))
 
     local term, vote_granted = urpc.call(node, {
         "request_vote", persistent_state.current_term, job.position
     }, rpc_timeout)
     if term == nil then -- Timeout occur retry
-        print("RPC VOTE REQUEST Timeout retried - resend")
+        print("RPC vote request - Timeout retried - resend")
         term, vote_granted = send_vote_request(node, node_index) 
     end 
     return term, vote_granted
 end
 
 function send_append_entry(node_index, node, entry)
-    print("Send append entry ("..json.encode(entry)..") to "..node_index)
+    print("Send append entry ("..json.encode(entry)..") to node "..node_index)
 
     local term, success = urpc.call(node, {
         "append_entry", persistent_state.current_term, job.position, entry
     }, rpc_timeout)
     if term == nil then  -- Timeout
+        print("RPC append entry - Timeout retried - resend")
         term, success = send_append_entry(node_index, node, entry)
     end
     return term, success
@@ -99,7 +109,7 @@ function heartbeat()
 end
 
 function become_leader()
-    print("I Become the LEADER now")
+    print("I Become the LEADER !")
     volatile_state.state = "leader"
     -- cancelled timout election
     election_time = misc.time()
@@ -122,8 +132,8 @@ function append_entry(term, leader_id, entry)
     set_election_timeout() -- reset the election timeout
     volatile_state.state = "follower" -- if candidate, return in follower state
     
-    -- HEARTBEAT
     if entry == nil then
+        -- HEARTBEAT
         return persistent_state.current_term, true
     else
         -- NORMAL Entry (Log replication feature - not present here) 
@@ -170,7 +180,7 @@ function set_election_timeout()
 end
 
 function trigger_election_timeout()
-    print("Election Trigger - upgrade term and become candidate ")
+    print("Election Trigger -> term+1, become candidate")
     volatile_state.state = "candidate"
     persistent_state.current_term = persistent_state.current_term + 1
     persistent_state.voted_for = job.position
