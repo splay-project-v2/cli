@@ -31,7 +31,7 @@
     <edge int_idx="16" int_src="6" int_dst="5" specs="DaemonRouter"/>
   </edges>
   <specs>
-    <RouterRouter dbl_kbps="15000" int_delayms="600"/>
+    <RouterRouter dbl_kbps="15000" int_delayms="200"/>
     <DaemonRouter dbl_kbps="1000" int_delayms="15"/>
   </specs>
 </topology>

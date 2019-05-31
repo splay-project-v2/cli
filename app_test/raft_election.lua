@@ -69,38 +69,57 @@ function stepdown(term)
     end
 end
 
+local inc = 0
+function uprc_call_timeout(node, data, timeout) 
+    inc = inc + 1 -- Unique name for each rpc
+    local name = "urpc.call:"..inc
+    local ok = false
+    local term, res = nil, false
+    local function call()
+        term, res = urpc.call(node, data, timeout*10)
+        ok = true
+        events.fire(name)
+    end
+    local function timeout_rec()
+        events.thread(function()
+            events.sleep(timeout)
+            if (ok == false) then 
+                call()
+                timeout_rec()
+            end
+        end)
+    end
+    call()
+    timeout_rec()
+    events.wait(name, timeout*10) -- After 9 retry stop anyway -> return nil, false
+    return term, res
+end
+
 function send_vote_request(node, node_index)
     print("Send vote request to node "..json.encode(node_index))
 
-    local term, vote_granted = urpc.call(node, {
+    local term, vote_granted = uprc_call_timeout(node, {
         "request_vote", persistent_state.current_term, job.position
     }, rpc_timeout)
-    if term == nil then -- Timeout occur retry
-        print("RPC vote request - Timeout retried - resend")
-        term, vote_granted = send_vote_request(node, node_index) 
-    end 
     return term, vote_granted
 end
 
 function send_append_entry(node_index, node, entry)
     print("Send append entry ("..json.encode(entry)..") to node "..node_index)
 
-    local term, success = urpc.call(node, {
+    local term, success = uprc_call_timeout(node, {
         "append_entry", persistent_state.current_term, job.position, entry
     }, rpc_timeout)
-    if term == nil then  -- Timeout
-        print("RPC append entry - Timeout retried - resend")
-        term, success = send_append_entry(node_index, node, entry)
-    end
     return term, success
 end
 
 function heartbeat()
+    -- CRASH POINT 1 2 3 4 5 : RECOVERY 1.0 : AFTER 3
     for i, n in pairs(job.nodes) do
         if i ~= job.position then
             events.thread(function ()
                 term, success = send_append_entry(i, n, nil) 
-                if term > persistent_state.current_term then
+                if term ~= nil and term > persistent_state.current_term then
                     stepdown(term)
                 end
             end)
@@ -192,7 +211,7 @@ function trigger_election_timeout()
         if i ~= job.position then
             events.thread(function ()
                 local term, vote_granted = send_vote_request(n, i)
-                print("Vote Request result "..term.." : "..json.encode(vote_granted).." from "..i)
+                print("Vote Request result "..json.encode(term)..", "..json.encode(vote_granted).." from "..i)
                 if vote_granted == true then
                     nb_vote = nb_vote + 1
                     -- If the majority grant the vote -> become the leader
@@ -200,7 +219,7 @@ function trigger_election_timeout()
                         become_leader()
                     end
                 end
-                if term > persistent_state.current_term then
+                if term ~= nil and term > persistent_state.current_term then
                     stepdown(term)
                 end
             end)
