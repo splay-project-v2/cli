@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <!-- Where broadcast_time > election_timeout -->
-
 <topology>
   <vertices>
     <vertex int_idx="1" role="virtnode" int_vn="1"/>

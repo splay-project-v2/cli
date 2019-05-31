@@ -54,6 +54,7 @@ end
 -- Utils functions
 function save_persistent_state()
     pers_file = io.open(filename_persistent, "w+")
+    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : RANDOM 0.01
     pers_file:write(json.encode(persistent_state))
     pers_file:close()
 end
@@ -110,6 +111,7 @@ function send_append_entry(node_index, node, entry)
 end
 
 function heartbeat()
+    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : AFTER 5
     for i, n in pairs(job.nodes) do
         if i ~= job.position then
             events.thread(function ()
@@ -160,6 +162,7 @@ end
 
 -- Vote Request RPC function, called by candidate to get votes
 function request_vote(term, candidate_id)
+    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : RANDOM 0.05
     aReceiveData(candidate_id, " RCP REQUEST VOTE")
     
     -- It the candidate is late - don't grant the vote
@@ -216,6 +219,8 @@ function trigger_election_timeout()
                 print("Vote Request result "..term.." : "..json.encode(vote_granted).." from "..i)
                 if vote_granted == true then
                     nb_vote = nb_vote + 1
+                    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : RANDOM 0.06
+
                     -- If the majority grant the vote -> become the leader
                     if nb_vote > majority_threshold and volatile_state.state == "candidate" then 
                         become_leader()
