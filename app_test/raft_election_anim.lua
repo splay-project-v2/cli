@@ -75,13 +75,17 @@ function stepdown(term)
 end
 
 local inc = 0
-function uprc_call_timeout(node, data, timeout) 
+function uprc_call_timeout(node, data, timeout, node_index) 
     inc = inc + 1 -- Unique name for each rpc
     local name = "urpc.call:"..inc
     local ok = false
     local term, res = nil, false
     local function call()
+        aSendData(node_index, "SEND VOTE REQUEST")
         term, res = urpc.call(node, data, timeout*10)
+        if term ~= nil then
+            aReceiveData(node_index, "RECEIVED APPEND ENTRY")
+        end
         ok = true
         events.fire(name)
     end
@@ -101,26 +105,18 @@ function uprc_call_timeout(node, data, timeout)
 end
 
 function send_vote_request(node, node_index)
-    aSendData(node_index, "SEND VOTE REQUEST")
-
     local term, vote_granted = uprc_call_timeout(node, {
         "request_vote", persistent_state.current_term, job.position
-    }, rpc_timeout)
-    if term ~= nil then
-        aReceiveData(node_index, "RECEIVED APPEND ENTRY")
-    end
+    }, rpc_timeout, node_index)
+    
     return term, vote_granted
 end
 
 function send_append_entry(node_index, node, entry)
-    aSendData(node_index, "SEND APPEND ENTRY")
-
     local term, success = uprc_call_timeout(node, {
         "append_entry", persistent_state.current_term, job.position, entry
-    }, rpc_timeout)
-    if term ~= nil then
-        aReceiveData(node_index, "RECEIVED APPEND ENTRY")
-    end
+    }, rpc_timeout, node_index)
+
     return term, success
 end
 
@@ -161,6 +157,7 @@ function append_entry(term, leader_id, entry)
     -- reset the election timeout (avoiding new election)
     set_election_timeout()
     volatile_state.state = "follower" -- if candidate, return in follower state
+    aUpdateState()
     
     -- HEARTBEAT
     if entry == nil then
