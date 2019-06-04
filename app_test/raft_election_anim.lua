@@ -81,10 +81,10 @@ function uprc_call_timeout(node, data, timeout, node_index)
     local ok = false
     local term, res = nil, false
     local function call()
-        aSendData(node_index, "SEND VOTE REQUEST")
+        aSendData(node_index, "SEND "..data[1])
         term, res = urpc.call(node, data, timeout*10)
         if term ~= nil then
-            aReceiveData(node_index, "RECEIVED APPEND ENTRY")
+            aReceiveData(node_index, "RECEIVED RESULT "..data[1].." - "..term.." "..json.encode(res))
         end
         ok = true
         events.fire(name)
@@ -150,7 +150,7 @@ end
 -- Append Entry RPC function used by leader for the heartbeat (avoiding new election) - entry == nil means heartbeat
 -- Also normally used for log replication (not present here)
 function append_entry(term, leader_id, entry)
-    aReceiveData(leader_id, " RCP APPEND ENTRY")
+    aReceiveData(leader_id, " RCP append_entry : "..json.encode(entry))
     if term > persistent_state.current_term then
         stepdown(term)
     end
@@ -161,22 +161,22 @@ function append_entry(term, leader_id, entry)
     
     -- HEARTBEAT
     if entry == nil then
-        aSendData(leader_id, "SEND RESULT APPEND ENTRY")
+        aSendData(leader_id, "SEND RESULT append_entry")
         return persistent_state.current_term, true
     else
         -- NORMAL Entry (Log replication feature - not present here) 
-        aSendData(leader_id, "SEND RESULT APPEND ENTRY")
+        aSendData(leader_id, "SEND RESULT append_entry")
         return persistent_state.current_term, false
     end
 end
 
 -- Vote Request RPC function, called by candidate to get votes
 function request_vote(term, candidate_id)
-    aReceiveData(candidate_id, " RCP REQUEST VOTE")
+    aReceiveData(candidate_id, " RCP request_vote")
     
     -- It the candidate is late - don't grant the vote
     if term < persistent_state.current_term then
-        aSendData(candidate_id, "SEND RESULT REQUEST VOET")
+        aSendData(candidate_id, "SEND RESULT request_vote")
         return persistent_state.current_term, false
     elseif term > persistent_state.current_term then
         stepdown(term)
@@ -194,7 +194,7 @@ function request_vote(term, candidate_id)
         vote_granted = true
         set_election_timeout() -- reset the election timeout
     end
-    aSendData(candidate_id, "SEND RESULT REQUEST VOET")
+    aSendData(candidate_id, "SEND RESULT request_vote")
     return persistent_state.current_term, vote_granted
 end
 
@@ -212,7 +212,6 @@ end
 
 -- Trigger function
 function trigger_election_timeout()
-    print("Election Trigger -> term+1, become candidate")
     volatile_state.state = "candidate"
     aUpdateState()
     persistent_state.current_term = persistent_state.current_term + 1

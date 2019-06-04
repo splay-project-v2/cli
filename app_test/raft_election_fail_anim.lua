@@ -28,10 +28,12 @@ volatile_state = {
     commit_index -- used for log replication
 }
 
+-- Not persistent - buggy code 
+voted_for = nil
+
 -- Save in storage before rpc response (in file - it is a trick for persistency)
 persistent_state = { 
     current_term = 0,
-    voted_for = nil,
     log = {} -- Array of {term = associated_term, data = <change_state>}
 }
 
@@ -62,7 +64,7 @@ end
 function stepdown(term)
     print("Stepdown : "..term.." > "..persistent_state.current_term)
     persistent_state.current_term = tonumber(term)
-    persistent_state.voted_for = nil
+    voted_for = nil
     save_persistent_state()
     volatile_state.state = "follower"
     aUpdateState()
@@ -121,7 +123,6 @@ function send_append_entry(node_index, node, entry)
 end
 
 function heartbeat()
-    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : AFTER 5
     for i, n in pairs(job.nodes) do
         if i ~= job.position then
             events.thread(function ()
@@ -173,7 +174,6 @@ end
 
 -- Vote Request RPC function, called by candidate to get votes
 function request_vote(term, candidate_id)
-    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : RANDOM 0.05
     aReceiveData(candidate_id, " RCP request_vote")
     
     -- It the candidate is late - don't grant the vote
@@ -189,10 +189,9 @@ function request_vote(term, candidate_id)
     -- Condition to grant the vote :
     --  (If the node doesn't already grant the vote to and other) and 
     --  (log of the candidate is updated - not usefull if only election)
-    if persistent_state.voted_for == nil or persistent_state.voted_for == candidate_id then
+    if voted_for == nil or voted_for == candidate_id then
         -- Save the candidate vote
-        persistent_state.voted_for = candidate_id
-        save_persistent_state()
+        voted_for = candidate_id
         vote_granted = true
         set_election_timeout() -- reset the election timeout
     end
@@ -217,7 +216,7 @@ function trigger_election_timeout()
     volatile_state.state = "candidate"
     aUpdateState()
     persistent_state.current_term = persistent_state.current_term + 1
-    persistent_state.voted_for = job.position
+    voted_for = job.position
     save_persistent_state()
     -- If conflict in this election, and new election can be trigger
     set_election_timeout()
@@ -228,8 +227,6 @@ function trigger_election_timeout()
                 local term, vote_granted = send_vote_request(n, i)
                 if vote_granted == true then
                     nb_vote = nb_vote + 1
-                    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : RANDOM 0.06
-
                     -- If the majority grant the vote -> become the leader
                     if nb_vote > majority_threshold and volatile_state.state == "candidate" then 
                         become_leader()
