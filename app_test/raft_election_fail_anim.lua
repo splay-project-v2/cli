@@ -123,6 +123,7 @@ function send_append_entry(node_index, node, entry)
 end
 
 function heartbeat()
+    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0 : AFTER 2 
     for i, n in pairs(job.nodes) do
         if i ~= job.position then
             events.thread(function ()
@@ -190,11 +191,14 @@ function request_vote(term, candidate_id)
     --  (If the node doesn't already grant the vote to and other) and 
     --  (log of the candidate is updated - not usefull if only election)
     if voted_for == nil or voted_for == candidate_id then
-        -- Save the candidate vote
         voted_for = candidate_id
         vote_granted = true
         set_election_timeout() -- reset the election timeout
     end
+    events.thread(function ()
+        print("Crash just after return result")
+        -- CRASH POINT 5 : RECOVERY 0 : RANDOM 0.5
+    end)
     aSendData(candidate_id, "SEND RESULT request_vote")
     return persistent_state.current_term, vote_granted
 end
@@ -205,7 +209,7 @@ function set_election_timeout()
     local time = election_time
     events.thread(function ()
         -- Randomize the sleeping time = [election_timeout, 2 * election_timeout] 
-        events.sleep(((math.random() + 1.0) * election_timeout))
+        events.sleep(((math.random()/2.0 + 1.0) * election_timeout))
         -- if the timeout is not cancelled -> trigger election
         if (time == election_time) then trigger_election_timeout() end
     end)
