@@ -1,6 +1,6 @@
 --[[
 Raft implementation - Only the leader election sub-problem
-Helped with https://web.stanford.edu/~ouster/cgi-bin/papers/raft-atc14
+Based on with https://web.stanford.edu/~ouster/cgi-bin/papers/raft-atc14
 --]]
 
 ---- Init
@@ -114,7 +114,6 @@ function send_append_entry(node_index, node, entry)
 end
 
 function heartbeat()
-    -- CRASH POINT 1 2 3 4 5 : RECOVERY 1.0 : AFTER 3
     for i, n in pairs(job.nodes) do
         if i ~= job.position then
             events.thread(function ()
@@ -138,7 +137,7 @@ function become_leader()
     -- No client simulation for now (because no replication log)
 end
 
----- RCP functions
+---- RPC functions
 
 -- Append Entry RPC function used by leader for the heartbeat 
 -- (avoiding new election) - entry == nil means heartbeat
@@ -227,10 +226,11 @@ function trigger_election_timeout()
     end
 end
 
--- UDP RPC server
+---- Main
+
+-- Init the UDP RPC server
 urpc.server(job.me)
 
----- Main
 events.run(function()
     
     set_election_timeout() -- set the election timeout
