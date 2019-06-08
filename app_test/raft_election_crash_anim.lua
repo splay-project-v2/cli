@@ -173,7 +173,7 @@ end
 
 -- Vote Request RPC function, called by candidate to get votes
 function request_vote(term, candidate_id)
-    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : RANDOM 0.05
+    -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : RANDOM 0.02
     aReceiveData(candidate_id, " RCP request_vote")
     
     -- It the candidate is late - don't grant the vote
@@ -197,6 +197,10 @@ function request_vote(term, candidate_id)
         set_election_timeout() -- reset the election timeout
     end
     aSendData(candidate_id, "SEND RESULT request_vote")
+
+    events.thread(function()
+        -- CRASH POINT 1 2 3 4 5 : RECOVERY 0.5 : RANDOM 0.05
+    end)
     return persistent_state.current_term, vote_granted
 end
 
